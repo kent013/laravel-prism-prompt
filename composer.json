@@ -1,0 +1,52 @@
+{
+    "name": "because/laravel-prism-prompt",
+    "description": "Laravel Mailable-like API for LLM prompts with Prism",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "because"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "echolabs/prism": "^0.10|^0.11|^0.12|^1.0",
+        "illuminate/support": "^10.0|^11.0|^12.0",
+        "illuminate/view": "^10.0|^11.0|^12.0",
+        "symfony/yaml": "^6.0|^7.0",
+        "webmozart/assert": "^1.11"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0|^10.0",
+        "pestphp/pest": "^2.0|^3.0",
+        "phpstan/phpstan": "^1.10"
+    },
+    "suggest": {
+        "react/promise": "Required for async execution with executeAsync()"
+    },
+    "autoload": {
+        "psr-4": {
+            "Because\\PrismPrompt\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Because\\PrismPrompt\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Because\\PrismPrompt\\PromptServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

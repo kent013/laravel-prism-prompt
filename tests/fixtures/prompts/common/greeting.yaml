@@ -1,0 +1,16 @@
+name: greeting
+provider: anthropic
+model: claude-sonnet-4-5-20250929
+max_tokens: 1024
+temperature: 0.5
+
+meta:
+  description: "Greeting prompt for testing"
+  variables:
+    required:
+      - name: "userName"
+        type: "string"
+
+prompt: |
+  Say hello to {{ $userName }}.
+  Return JSON: {"message": "...", "tone": "..."}
