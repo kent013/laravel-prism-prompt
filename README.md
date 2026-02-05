@@ -5,7 +5,7 @@ Laravel Mailable-like API for LLM prompts with [Prism](https://github.com/echola
 ## Installation
 
 ```bash
-composer require because/laravel-prism-prompt
+composer require kent013/laravel-prism-prompt
 ```
 
 ## Configuration

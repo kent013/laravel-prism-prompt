@@ -1,11 +1,11 @@
 {
-    "name": "because/laravel-prism-prompt",
+    "name": "kent013/laravel-prism-prompt",
     "description": "Laravel Mailable-like API for LLM prompts with Prism",
     "type": "library",
     "license": "MIT",
     "authors": [
         {
-            "name": "because"
+            "name": "kent013"
         }
     ],
     "require": {
