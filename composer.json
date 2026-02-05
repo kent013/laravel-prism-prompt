@@ -17,9 +17,15 @@
         "webmozart/assert": "^1.11|^2.0"
     },
     "require-dev": {
+        "larastan/larastan": "^2.0|^3.0",
+        "laravel/pint": "^1.0",
         "orchestra/testbench": "^8.0|^9.0|^10.0",
-        "pestphp/pest": "^2.0|^3.0",
-        "phpstan/phpstan": "^1.10"
+        "pestphp/pest": "^2.0|^3.0"
+    },
+    "scripts": {
+        "test": "pest",
+        "phpstan": "phpstan analyse",
+        "fix": "pint"
     },
     "suggest": {
         "react/promise": "Required for async execution with executeAsync()"
