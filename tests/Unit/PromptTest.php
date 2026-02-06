@@ -103,9 +103,11 @@ class CustomPathPrompt extends Prompt
     }
 }
 
-// getPromptsBasePath() override test
-class CustomBasePathPrompt extends Prompt
+// $promptsDirectory property test
+class CustomDirectoryPrompt extends Prompt
 {
+    protected string $promptsDirectory = 'custom';
+
     public function __construct(
         public readonly string $userName,
     ) {
@@ -115,11 +117,6 @@ class CustomBasePathPrompt extends Prompt
     protected function parseResponse(string $responseText): string
     {
         return $responseText;
-    }
-
-    protected function getPromptsBasePath(): string
-    {
-        return __DIR__.'/../fixtures/prompts/custom';
     }
 
     public function testResolveProvider(): string
@@ -360,25 +357,26 @@ it('resolves yaml by $promptName property', function (): void {
     expect($prompt->testResolveModel())->toBe('gpt-4o');
 });
 
-it('resolves yaml from overridden getPromptsBasePath', function (): void {
-    // CustomBasePathPrompt overrides getPromptsBasePath() to fixtures/prompts/custom
-    // Naming convention: CustomBasePath → custom_base_path.yaml (not found, falls back to defaults)
-    // But $promptName is not set, so it derives from class name
-    $prompt = new CustomBasePathPrompt('Alice');
+it('resolves yaml by $promptsDirectory with naming convention', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts');
 
-    // No custom_base_path.yaml exists, so falls back to config defaults
+    // CustomDirectoryPrompt: $promptsDirectory = 'custom', naming convention → custom_directory.yaml
+    // custom/custom_directory.yaml does not exist, falls back to config defaults
+    $prompt = new CustomDirectoryPrompt('Alice');
+
     expect($prompt->testResolveProvider())->toBe('anthropic');
 });
 
-it('resolves yaml from overridden getPromptsBasePath with $promptName', function (): void {
-    // my_prompt.yaml is in fixtures/prompts/custom/ and CustomBasePathPrompt points there
-    // We need a class that combines getPromptsBasePath override with $promptName
-    $prompt = new class('Alice') extends CustomBasePathPrompt
+it('resolves yaml by $promptsDirectory with $promptName', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts');
+
+    // $promptsDirectory = 'custom', $promptName = 'my_prompt'
+    // → fixtures/prompts/custom/my_prompt.yaml
+    $prompt = new class('Alice') extends CustomDirectoryPrompt
     {
         protected string $promptName = 'my_prompt';
     };
 
-    // my_prompt.yaml has provider: openai, model: gpt-4o
     expect($prompt->testResolveProvider())->toBe('openai');
     expect($prompt->testResolveModel())->toBe('gpt-4o');
 });

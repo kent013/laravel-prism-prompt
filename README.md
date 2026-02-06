@@ -99,18 +99,16 @@ class GreetingPrompt extends Prompt
 }
 ```
 
-Override `getPromptsBasePath()` to change the base directory:
+Use `$promptsDirectory` to group prompts in a subdirectory:
 
 ```php
-class MyPrompt extends Prompt
+// resources/prompts/training/hint_generation.yaml
+class HintGenerationPrompt extends Prompt
 {
-    protected function getPromptsBasePath(): string
-    {
-        return resource_path('my-prompts');
-    }
+    protected string $promptsDirectory = 'training';
+    // Naming convention: hint_generation.yaml
     // ...
 }
-// Resolves: resources/my-prompts/my.yaml (naming convention)
 ```
 
 You can still override `getTemplatePath()` for full path control.

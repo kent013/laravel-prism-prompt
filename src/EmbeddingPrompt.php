@@ -38,8 +38,11 @@ class EmbeddingPrompt implements EmbeddingPromptInterface
      */
     public static function load(string $name): static
     {
+        $basePath = config('prism-prompt.prompts_path', resource_path('prompts'));
+        Assert::string($basePath);
+
         $instance = new static;
-        $instance->templatePath = $instance->getPromptsBasePath().'/'.$name.'.yaml';
+        $instance->templatePath = $basePath.'/'.$name.'.yaml';
         $instance->loadMetadata();
 
         return $instance;

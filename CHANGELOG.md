@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`TextPrompt`**: `Prompt<string>` の具象クラス（`load()` ファクトリで使用）
 - **`$promptName` プロパティ**: サブクラスでYAML相対パスを指定（例: `'standard/greeting'`）
 - **命名規則によるYAML解決**: クラス名から自動導出（`HintGenerationPrompt` → `hint_generation.yaml`）
-- **`getPromptsBasePath()`**: サブクラスでオーバーライドしてYAMLベースディレクトリを変更可能
+- **`$promptsDirectory` プロパティ**: サブクラスでYAMLサブディレクトリを指定（例: `'training'`）
 
 ### Changed
 

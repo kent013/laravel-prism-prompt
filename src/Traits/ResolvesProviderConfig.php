@@ -32,6 +32,8 @@ trait ResolvesProviderConfig
 
     protected string $promptName = '';
 
+    protected string $promptsDirectory = '';
+
     /**
      * Get the path to the metadata YAML file
      *
@@ -50,20 +52,14 @@ trait ResolvesProviderConfig
 
     private function resolvePromptPath(string $name): string
     {
-        return $this->getPromptsBasePath().'/'.$name.'.yaml';
-    }
-
-    /**
-     * Get the base directory for prompt YAML files
-     *
-     * Override in subclasses to specify a custom directory.
-     */
-    protected function getPromptsBasePath(): string
-    {
         $basePath = config('prism-prompt.prompts_path', resource_path('prompts'));
         Assert::string($basePath);
 
-        return $basePath;
+        if ($this->promptsDirectory !== '') {
+            return $basePath.'/'.$this->promptsDirectory.'/'.$name.'.yaml';
+        }
+
+        return $basePath.'/'.$name.'.yaml';
     }
 
     /**
