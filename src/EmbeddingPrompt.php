@@ -35,8 +35,6 @@ class EmbeddingPrompt implements EmbeddingPromptInterface
 
     /**
      * Create instance from YAML template name
-     *
-     * @return static
      */
     public static function load(string $name): static
     {
