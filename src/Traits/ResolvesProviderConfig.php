@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Kent013\PrismPrompt\Traits;
 
+use Illuminate\Support\Str;
 use InvalidArgumentException;
+use ReflectionClass;
 use Symfony\Component\Yaml\Yaml;
 use Webmozart\Assert\Assert;
 
@@ -28,12 +30,41 @@ trait ResolvesProviderConfig
 
     protected string $templatePath = '';
 
+    protected string $promptName = '';
+
     /**
      * Get the path to the metadata YAML file
+     *
+     * Resolution: templatePath (full) > promptName (relative) > naming convention (class name)
      */
     protected function getTemplatePath(): string
     {
-        return $this->templatePath;
+        if ($this->templatePath !== '') {
+            return $this->templatePath;
+        }
+
+        $name = $this->promptName !== '' ? $this->promptName : $this->derivePromptName();
+
+        return $this->resolvePromptPath($name);
+    }
+
+    private function resolvePromptPath(string $name): string
+    {
+        $basePath = config('prism-prompt.prompts_path', resource_path('prompts'));
+        Assert::string($basePath);
+
+        return $basePath.'/'.$name.'.yaml';
+    }
+
+    /**
+     * Derive prompt name from class name (e.g. HintGenerationPrompt → hint_generation)
+     */
+    private function derivePromptName(): string
+    {
+        $shortName = (new ReflectionClass($this))->getShortName();
+        $name = (string) preg_replace('/Prompt$/', '', $shortName);
+
+        return Str::snake($name);
     }
 
     /**

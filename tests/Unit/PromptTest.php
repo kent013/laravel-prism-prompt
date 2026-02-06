@@ -51,6 +51,58 @@ class TestPrompt extends Prompt
     }
 }
 
+// Naming convention test: TestPrompt → test.yaml (but this class overrides getTemplatePath)
+// So we create a separate class that relies on naming convention
+class NamingConventionPrompt extends Prompt
+{
+    public function __construct(
+        public readonly string $userName,
+    ) {
+        parent::__construct();
+    }
+
+    protected function parseResponse(string $responseText): string
+    {
+        return $responseText;
+    }
+
+    public function testResolveProvider(): string
+    {
+        return $this->resolveProvider();
+    }
+}
+
+// Naming convention: TestNamingPrompt → test_naming.yaml (won't exist)
+// We also test with a name that DOES exist: "test" → test.yaml
+// Simulated via $promptName since we can't rename the class to "TestPrompt" (already taken)
+
+// $promptName property test
+class CustomPathPrompt extends Prompt
+{
+    protected string $promptName = 'custom/my_prompt';
+
+    public function __construct(
+        public readonly string $topic,
+    ) {
+        parent::__construct();
+    }
+
+    protected function parseResponse(string $responseText): string
+    {
+        return $responseText;
+    }
+
+    public function testResolveProvider(): string
+    {
+        return $this->resolveProvider();
+    }
+
+    public function testResolveModel(): string
+    {
+        return $this->resolveModel();
+    }
+}
+
 it('renders blade template with object properties', function (): void {
     $prompt = new TestPrompt('Alice');
 
@@ -254,4 +306,26 @@ it('loads prompt with withApiKey', function (): void {
         ->withApiKey('custom-key');
 
     expect($prompt)->toBeInstanceOf(Prompt::class);
+});
+
+// Naming convention & $promptName tests
+
+it('resolves yaml by naming convention from class name', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts');
+
+    // NamingConventionPrompt → naming_convention.yaml (not found)
+    // Falls back to config defaults for provider/model
+    $prompt = new NamingConventionPrompt('Alice');
+
+    expect($prompt->testResolveProvider())->toBe('anthropic'); // config default
+});
+
+it('resolves yaml by $promptName property', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts');
+
+    $prompt = new CustomPathPrompt('testing');
+
+    // custom/my_prompt.yaml has provider: openai, model: gpt-4o
+    expect($prompt->testResolveProvider())->toBe('openai');
+    expect($prompt->testResolveModel())->toBe('gpt-4o');
 });

@@ -1,0 +1,7 @@
+name: test
+provider: anthropic
+model: claude-sonnet-4-5-20250929
+max_tokens: 512
+
+prompt: |
+  Hello {{ $userName }}.

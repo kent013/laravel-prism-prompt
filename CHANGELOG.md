@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`EmbeddingPrompt::load()`**: YAML名を指定するだけでEmbeddingを実行可能
   - `EmbeddingPrompt::load('document-embedding')->executeSync('text')`
 - **`TextPrompt`**: `Prompt<string>` の具象クラス（`load()` ファクトリで使用）
+- **`$promptName` プロパティ**: サブクラスでYAML相対パスを指定（例: `'standard/greeting'`）
+- **命名規則によるYAML解決**: クラス名から自動導出（`HintGenerationPrompt` → `hint_generation.yaml`）
 
 ### Changed
 

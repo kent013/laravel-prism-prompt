@@ -66,11 +66,6 @@ class GreetingPrompt extends Prompt
         parent::__construct();
     }
 
-    protected function getTemplatePath(): string
-    {
-        return resource_path('prompts/greeting.yaml');
-    }
-
     protected function parseResponse(string $text): GreetingResponse
     {
         $data = $this->extractJson($text);
@@ -80,6 +75,31 @@ class GreetingPrompt extends Prompt
 
 $result = (new GreetingPrompt('Alice'))->executeSync();
 ```
+
+### YAML Template Resolution
+
+YAML template is resolved in the following priority:
+
+1. **`$promptName` property** — relative path from `prompts_path`
+2. **Naming convention** — derived from class name (`GreetingPrompt` → `greeting.yaml`)
+
+```php
+// 1. $promptName: resources/prompts/standard/greeting.yaml
+class GreetingPrompt extends Prompt
+{
+    protected string $promptName = 'standard/greeting';
+    // ...
+}
+
+// 2. Naming convention: resources/prompts/greeting.yaml
+class GreetingPrompt extends Prompt
+{
+    // No $promptName needed — auto-derived from class name
+    // ...
+}
+```
+
+You can still override `getTemplatePath()` for full path control.
 
 ## Runtime API Key Configuration
 
@@ -290,33 +310,22 @@ class MyService
 
 ## Configuration Reference
 
-```php
-// config/prism-prompt.php
-return [
-    'default_provider' => env('PRISM_PROVIDER', 'anthropic'),
-    'default_model' => env('PRISM_MODEL', 'claude-sonnet-4-5-20250929'),
-    'default_max_tokens' => 4096,
-    'default_temperature' => 0.7,
-
-    'default_embedding_provider' => env('PRISM_EMBEDDING_PROVIDER', 'openai'),
-    'default_embedding_model' => env('PRISM_EMBEDDING_MODEL', 'text-embedding-3-small'),
-
-    'prompts_path' => resource_path('prompts'),
-
-    'cache' => [
-        'enabled' => env('PRISM_PROMPT_CACHE', true),
-        'ttl' => 3600,
-        'store' => null,
-    ],
-
-    'debug' => [
-        'enabled' => env('PRISM_PROMPT_DEBUG', false),
-        'log_channel' => env('PRISM_PROMPT_LOG_CHANNEL', 'prism-prompt'),
-        'save_files' => env('PRISM_PROMPT_SAVE_FILES', false),
-        'storage_path' => storage_path('prism-prompt-debug'),
-    ],
-];
-```
+| Key | Default | Description |
+|-----|---------|-------------|
+| `default_provider` | `anthropic` | Default LLM provider for text generation |
+| `default_model` | `claude-sonnet-4-5-20250929` | Default model for text generation |
+| `default_max_tokens` | `4096` | Maximum tokens in LLM response |
+| `default_temperature` | `0.7` | Response randomness (0.0 - 1.0) |
+| `default_embedding_provider` | `openai` | Default provider for embeddings (separate since not all providers support embeddings) |
+| `default_embedding_model` | `text-embedding-3-small` | Default model for embeddings |
+| `prompts_path` | `resource_path('prompts')` | Base path for YAML templates. Used by `load()`, `$promptName`, and naming convention |
+| `cache.enabled` | `true` | Enable YAML template caching |
+| `cache.ttl` | `3600` | Cache TTL in seconds |
+| `cache.store` | `null` | Cache store (null = default) |
+| `debug.enabled` | `false` | Enable performance logging |
+| `debug.log_channel` | `prism-prompt` | Log channel for performance logs |
+| `debug.save_files` | `false` | Save prompt/response/metadata files to disk |
+| `debug.storage_path` | `storage_path('prism-prompt-debug')` | Directory for debug files |
 
 ## License
 
