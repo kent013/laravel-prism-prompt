@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-02-06
+
+### Changed
+
+- `PromptTemplate` から `final` を削除（サブクラスで拡張可能に）
+- `$promptsDirectory` プロパティを追加（YAMLサブディレクトリの指定をサポート）
+
+### Removed
+
+- `LoadsPromptTemplate` trait（不要なため削除）
+- `PromptTemplateNotFoundException`, `InvalidTemplatePathException`（LoadsPromptTemplate削除に伴い）
+
 ## [0.4.0] - 2026-02-06
 
 ### Added
@@ -17,20 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`TextPrompt`**: `Prompt<string>` の具象クラス（`load()` ファクトリで使用）
 - **`$promptName` プロパティ**: サブクラスでYAML相対パスを指定（例: `'standard/greeting'`）
 - **命名規則によるYAML解決**: クラス名から自動導出（`HintGenerationPrompt` → `hint_generation.yaml`）
-- **`$promptsDirectory` プロパティ**: サブクラスでYAMLサブディレクトリを指定（例: `'training'`）
 
 ### Changed
 
 - `getTemplatePath()` を abstract から通常メソッドに変更（`ResolvesProviderConfig` trait）
 - `EmbeddingPrompt` を abstract から具象クラスに変更
-- `PromptTemplate` から `final` を削除（サブクラスで拡張可能に）
-- `PromptTemplate::fromYaml()` の戻り値を `self` → `static` に変更
-
-### Removed
-
-- `LoadsPromptTemplate` trait（フォールバックロジックはアプリケーション側で実装すべき）
-- `PromptTemplateNotFoundException`, `InvalidTemplatePathException`（`LoadsPromptTemplate` 依存）
-- `PromptTemplate::getScenarioType()`（シナリオ固有、アプリ側でサブクラスに実装すべき）
 
 ## [0.3.0] - 2026-02-06
 
