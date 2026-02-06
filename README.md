@@ -44,7 +44,7 @@ prompt: |
 ### 2. Create a Prompt Class
 
 ```php
-use Because\PrismPrompt\Prompt;
+use Kent013\PrismPrompt\Prompt;
 
 class GreetingPrompt extends Prompt
 {
@@ -77,6 +77,113 @@ $result = (new GreetingPrompt('Alice'))->executeSync();
 $promise = (new GreetingPrompt('Alice'))->execute();
 ```
 
+## Runtime API Key Configuration
+
+You can provide a custom API key at runtime using fluent methods:
+
+```php
+// Set custom API key
+$result = (new GreetingPrompt('Alice'))
+    ->withApiKey('user-provided-api-key')
+    ->executeSync();
+
+// Or use withProviderConfig for more options
+$result = (new GreetingPrompt('Alice'))
+    ->withProviderConfig([
+        'api_key' => 'custom-api-key',
+        'url' => 'https://custom-endpoint.example.com',
+    ])
+    ->executeSync();
+```
+
+**Note:** Do not reuse Prompt instances after calling these methods. Use one instance per request.
+
+## Testing with Fake
+
+Similar to `Prism::fake()`, you can mock prompt executions in tests:
+
+```php
+use Kent013\PrismPrompt\Prompt;
+use Kent013\PrismPrompt\Testing\TextResponseFake;
+
+// Set up fake responses
+$fake = Prompt::fake([
+    TextResponseFake::make()->withText('{"message": "Hello!", "tone": "friendly"}'),
+    TextResponseFake::make()->withText('{"message": "Goodbye!", "tone": "warm"}'),
+]);
+
+// Execute prompts - they will return fake responses in sequence
+$result1 = (new GreetingPrompt('Alice'))->executeSync();
+$result2 = (new GreetingPrompt('Bob'))->executeSync();
+
+// Make assertions
+$fake->assertCallCount(2);
+$fake->assertPromptContains('Alice');
+$fake->assertProvider('anthropic');
+$fake->assertModel('claude-sonnet-4-5-20250929');
+
+// Stop faking when done
+Prompt::stopFaking();
+```
+
+### Available Assertions
+
+| Method | Description |
+|--------|-------------|
+| `assertCallCount(int $count)` | Assert number of prompt executions |
+| `assertPrompt(string $prompt)` | Assert exact prompt text was sent |
+| `assertPromptContains(string $text)` | Assert prompt contains specific text |
+| `assertPromptClass(string $class)` | Assert specific prompt class was used |
+| `assertProvider(string $provider)` | Assert provider was used |
+| `assertModel(string $model)` | Assert model was used |
+| `assertRequest(Closure $fn)` | Custom assertion with recorded requests |
+
+### TextResponseFake Builder
+
+```php
+TextResponseFake::make()
+    ->withText('response text')
+    ->withUsage(100, 50);  // promptTokens, completionTokens
+```
+
+## Debug Logging
+
+Enable performance logging for debugging LLM calls:
+
+```env
+PRISM_PROMPT_DEBUG=true
+PRISM_PROMPT_LOG_CHANNEL=prism-prompt
+PRISM_PROMPT_SAVE_FILES=true
+```
+
+When enabled, logs include:
+- Execution ID
+- Prompt class
+- Provider and model
+- Duration (ms)
+- Token usage (prompt/completion/total)
+
+When `save_files` is enabled, debug files are saved to `storage/prism-prompt-debug/{date}/{execution-id}/`:
+- `prompt.txt` - The rendered prompt
+- `response.txt` - The LLM response
+- `metadata.json` - Execution metadata
+
+### Custom Logger
+
+You can provide a custom logger by extending `Prompt` and overriding `getPerformanceLogger()`:
+
+```php
+use Kent013\PrismPrompt\Contracts\PerformanceLoggerInterface;
+
+class MyPrompt extends Prompt
+{
+    protected function getPerformanceLogger(): ?PerformanceLoggerInterface
+    {
+        return app(MyCustomLogger::class);
+    }
+}
+```
+
 ## Response Parsing
 
 ### JSON Response
@@ -105,7 +212,7 @@ protected function parseResponse(string $text): string
 For loading templates with fallback resolution:
 
 ```php
-use Because\PrismPrompt\Traits\LoadsPromptTemplate;
+use Kent013\PrismPrompt\Traits\LoadsPromptTemplate;
 
 class MyService
 {
@@ -124,7 +231,7 @@ class MyService
 For validating required variables:
 
 ```php
-use Because\PrismPrompt\Traits\ValidatesPromptVariables;
+use Kent013\PrismPrompt\Traits\ValidatesPromptVariables;
 
 class MyService
 {
@@ -135,6 +242,32 @@ class MyService
         $this->validateVariables($variables, $template);
     }
 }
+```
+
+## Configuration Reference
+
+```php
+// config/prism-prompt.php
+return [
+    'default_provider' => env('PRISM_PROVIDER', 'anthropic'),
+    'default_model' => env('PRISM_MODEL', 'claude-sonnet-4-5-20250929'),
+    'default_max_tokens' => 4096,
+    'default_temperature' => 0.7,
+    'prompts_path' => resource_path('prompts'),
+
+    'cache' => [
+        'enabled' => env('PRISM_PROMPT_CACHE', true),
+        'ttl' => 3600,
+        'store' => null,
+    ],
+
+    'debug' => [
+        'enabled' => env('PRISM_PROMPT_DEBUG', false),
+        'log_channel' => env('PRISM_PROMPT_LOG_CHANNEL', 'prism-prompt'),
+        'save_files' => env('PRISM_PROMPT_SAVE_FILES', false),
+        'storage_path' => storage_path('prism-prompt-debug'),
+    ],
+];
 ```
 
 ## License

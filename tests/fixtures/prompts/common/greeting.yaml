@@ -7,7 +7,7 @@ temperature: 0.5
 meta:
   description: "Greeting prompt for testing"
   variables:
-    required:
+    runtime:
       - name: "userName"
         type: "string"
 

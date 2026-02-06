@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Because\PrismPrompt;
+namespace Kent013\PrismPrompt;
 
 use Illuminate\Support\ServiceProvider;
 
@@ -14,6 +14,10 @@ class PromptServiceProvider extends ServiceProvider
             __DIR__.'/../config/prism-prompt.php',
             'prism-prompt'
         );
+
+        $this->app->singleton(PerformanceLogger::class, function () {
+            return new PerformanceLogger;
+        });
     }
 
     public function boot(): void

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Because\PrismPrompt\Traits;
+namespace Kent013\PrismPrompt\Traits;
 
-use Because\PrismPrompt\Exceptions\InvalidTemplatePathException;
-use Because\PrismPrompt\Exceptions\PromptTemplateNotFoundException;
-use Because\PrismPrompt\PromptTemplate;
+use Kent013\PrismPrompt\Exceptions\InvalidTemplatePathException;
+use Kent013\PrismPrompt\Exceptions\PromptTemplateNotFoundException;
+use Kent013\PrismPrompt\PromptTemplate;
 
 /**
  * YAML loading and path resolution via prompts array or common fallback

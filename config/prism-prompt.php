@@ -71,4 +71,20 @@ return [
         'ttl' => 3600,
         'store' => null, // null = default cache driver
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Debug Settings
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for debug logging and file saving.
+    | Useful for debugging LLM prompts and responses.
+    |
+    */
+    'debug' => [
+        'enabled' => env('PRISM_PROMPT_DEBUG', false),
+        'log_channel' => env('PRISM_PROMPT_LOG_CHANNEL', 'prism-prompt'),
+        'save_files' => env('PRISM_PROMPT_SAVE_FILES', false),
+        'storage_path' => storage_path('prism-prompt-debug'),
+    ],
 ];

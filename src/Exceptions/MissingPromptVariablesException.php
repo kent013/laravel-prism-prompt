@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Because\PrismPrompt\Exceptions;
+namespace Kent013\PrismPrompt\Exceptions;
 
 use RuntimeException;
 

@@ -1,0 +1,35 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.2.0] - 2026-02-06
+
+### Added
+
+- **Runtime API Key Configuration**: `withApiKey()` and `withProviderConfig()` methods for runtime provider configuration
+- **Testing Support**: `Prompt::fake()` API similar to `Prism::fake()` for mocking prompt executions in tests
+  - `TextResponseFake` builder for creating fake responses
+  - `PromptFake` with assertion methods (`assertCallCount`, `assertPromptContains`, `assertProvider`, `assertModel`, etc.)
+- **Performance Logging**: `PerformanceLogger` class for debugging LLM calls
+  - Configurable via `prism-prompt.debug.*` config keys
+  - Optional file saving for prompts, responses, and metadata
+- **PerformanceLoggerInterface**: Contract for custom logger implementations
+
+### Changed
+
+- Namespace changed from `Because\PrismPrompt` to `Kent013\PrismPrompt`
+
+## [0.1.0] - 2026-02-05
+
+### Added
+
+- Initial release
+- `Prompt` base class with Mailable-like API
+- `PromptTemplate` for YAML-based template loading
+- `LoadsPromptTemplate` trait for template resolution
+- `ValidatesPromptVariables` trait for variable validation
+- Configuration for default provider, model, max tokens, and temperature
+- YAML template caching support

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Because\PrismPrompt\PromptTemplate;
+use Kent013\PrismPrompt\PromptTemplate;
 
 it('loads template from yaml file', function (): void {
     $path = __DIR__.'/../fixtures/prompts/common/greeting.yaml';

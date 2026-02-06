@@ -32,18 +32,18 @@
     },
     "autoload": {
         "psr-4": {
-            "Because\\PrismPrompt\\": "src/"
+            "Kent013\\PrismPrompt\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Because\\PrismPrompt\\Tests\\": "tests/"
+            "Kent013\\PrismPrompt\\Tests\\": "tests/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Because\\PrismPrompt\\PromptServiceProvider"
+                "Kent013\\PrismPrompt\\PromptServiceProvider"
             ]
         }
     },

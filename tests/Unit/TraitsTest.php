@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use Because\PrismPrompt\Exceptions\InvalidTemplatePathException;
-use Because\PrismPrompt\Exceptions\MissingPromptVariablesException;
-use Because\PrismPrompt\Exceptions\PromptTemplateNotFoundException;
-use Because\PrismPrompt\PromptTemplate;
-use Because\PrismPrompt\Traits\LoadsPromptTemplate;
-use Because\PrismPrompt\Traits\ValidatesPromptVariables;
+use Kent013\PrismPrompt\Exceptions\InvalidTemplatePathException;
+use Kent013\PrismPrompt\Exceptions\MissingPromptVariablesException;
+use Kent013\PrismPrompt\Exceptions\PromptTemplateNotFoundException;
+use Kent013\PrismPrompt\PromptTemplate;
+use Kent013\PrismPrompt\Traits\LoadsPromptTemplate;
+use Kent013\PrismPrompt\Traits\ValidatesPromptVariables;
 
 // Test class using LoadsPromptTemplate
 class TemplateLoader
@@ -38,7 +38,7 @@ class VariableValidator
 
 describe('LoadsPromptTemplate', function (): void {
     it('loads template from common path', function (): void {
-        $loader = new TemplateLoader();
+        $loader = new TemplateLoader;
 
         $template = $loader->load([], 'greeting');
 
@@ -46,13 +46,13 @@ describe('LoadsPromptTemplate', function (): void {
     });
 
     it('throws exception for non-existent template', function (): void {
-        $loader = new TemplateLoader();
+        $loader = new TemplateLoader;
 
         $loader->load([], 'non_existent');
     })->throws(PromptTemplateNotFoundException::class);
 
     it('throws exception for path outside base directory', function (): void {
-        $loader = new TemplateLoader();
+        $loader = new TemplateLoader;
 
         $loader->testValidatePath('/etc/passwd');
     })->throws(InvalidTemplatePathException::class);
@@ -60,7 +60,7 @@ describe('LoadsPromptTemplate', function (): void {
 
 describe('ValidatesPromptVariables', function (): void {
     it('validates required variables', function (): void {
-        $validator = new VariableValidator();
+        $validator = new VariableValidator;
         $template = PromptTemplate::fromYaml(__DIR__.'/../fixtures/prompts/common/greeting.yaml');
 
         $validator->validate(['userName' => 'Alice'], $template);
@@ -69,7 +69,7 @@ describe('ValidatesPromptVariables', function (): void {
     });
 
     it('throws exception for missing variables', function (): void {
-        $validator = new VariableValidator();
+        $validator = new VariableValidator;
         $template = PromptTemplate::fromYaml(__DIR__.'/../fixtures/prompts/common/greeting.yaml');
 
         $validator->validate([], $template);

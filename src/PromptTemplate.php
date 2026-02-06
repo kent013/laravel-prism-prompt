@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Because\PrismPrompt;
+namespace Kent013\PrismPrompt;
 
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\Yaml\Yaml;

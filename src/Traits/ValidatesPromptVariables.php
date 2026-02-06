@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Because\PrismPrompt\Traits;
+namespace Kent013\PrismPrompt\Traits;
 
-use Because\PrismPrompt\Exceptions\MissingPromptVariablesException;
-use Because\PrismPrompt\PromptTemplate;
+use Kent013\PrismPrompt\Exceptions\MissingPromptVariablesException;
+use Kent013\PrismPrompt\PromptTemplate;
 
 /**
  * Validates required variables

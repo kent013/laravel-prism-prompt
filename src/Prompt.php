@@ -2,12 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Because\PrismPrompt;
+namespace Kent013\PrismPrompt;
 
-use Because\PrismPrompt\Contracts\PromptInterface;
-use Because\PrismPrompt\Exceptions\InvalidJsonResponseException;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
+use JsonException;
+use Kent013\PrismPrompt\Contracts\PromptInterface;
+use Kent013\PrismPrompt\Exceptions\InvalidJsonResponseException;
+use Kent013\PrismPrompt\Testing\PromptFake;
+use Kent013\PrismPrompt\Testing\TextResponseFake;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Text\Response as TextResponse;
 use React\Promise\PromiseInterface;
@@ -30,6 +34,8 @@ use function React\Async\async;
  */
 abstract class Prompt implements PromptInterface
 {
+    protected static ?PromptFake $fake = null;
+
     protected ?string $provider = null;
 
     protected ?string $model = null;
@@ -41,9 +47,48 @@ abstract class Prompt implements PromptInterface
     /** @var array<string, mixed> */
     protected array $metadata = [];
 
+    /** @var array<string, mixed> */
+    protected array $providerConfig = [];
+
     public function __construct()
     {
         $this->loadMetadata();
+    }
+
+    /**
+     * Start faking prompt executions for testing
+     *
+     * @param  array<int, TextResponseFake>  $responses
+     */
+    public static function fake(array $responses = []): PromptFake
+    {
+        static::$fake = new PromptFake($responses);
+
+        return static::$fake;
+    }
+
+    /**
+     * Get the current fake instance
+     */
+    public static function getFake(): ?PromptFake
+    {
+        return static::$fake;
+    }
+
+    /**
+     * Check if currently faking
+     */
+    public static function isFaking(): bool
+    {
+        return static::$fake !== null;
+    }
+
+    /**
+     * Stop faking and restore normal behavior
+     */
+    public static function stopFaking(): void
+    {
+        static::$fake = null;
     }
 
     /**
@@ -109,11 +154,12 @@ abstract class Prompt implements PromptInterface
 
             /** @var array<string, mixed> $data */
             return $data;
-        } catch (\JsonException $e) {
+        } catch (JsonException $e) {
             Log::error('[PrismPrompt] JSON parse error', [
                 'content' => $content,
                 'error' => $e->getMessage(),
             ]);
+
             throw new InvalidJsonResponseException(
                 'Failed to parse JSON: '.$e->getMessage(),
                 0,
@@ -156,7 +202,7 @@ abstract class Prompt implements PromptInterface
             /** @var array<string, mixed> $metadata */
             $this->metadata = $metadata;
         } else {
-            throw new \InvalidArgumentException("Metadata must be an associative array: {$metadataPath}");
+            throw new InvalidArgumentException("Metadata must be an associative array: {$metadataPath}");
         }
     }
 
@@ -166,16 +212,59 @@ abstract class Prompt implements PromptInterface
     protected function executePrism(): string
     {
         $prompt = $this->render();
+        $provider = $this->resolveProvider();
+        $model = $this->resolveModel();
+
+        // Handle fake mode for testing
+        if (static::isFaking() && static::$fake !== null) {
+            static::$fake->record(static::class, $prompt, $provider, $model);
+            $fakeResponse = static::$fake->nextResponse();
+
+            return $fakeResponse->getText();
+        }
+
+        // Start performance logging
+        $logger = $this->getPerformanceLogger();
+        $executionId = $logger?->startExecution(static::class, $provider, $model, $prompt);
+        $startTime = microtime(true);
 
         $result = Prism::text()
-            ->using($this->resolveProvider(), $this->resolveModel())
+            ->using($provider, $model, $this->providerConfig)
             ->withPrompt($prompt)
             ->withMaxTokens($this->resolveMaxTokens())
             ->asText();
 
         Assert::isInstanceOf($result, TextResponse::class);
 
+        // Complete performance logging
+        if ($logger && $executionId) {
+            $durationMs = (microtime(true) - $startTime) * 1000;
+            $logger->completeExecution(
+                $executionId,
+                $result->text,
+                $durationMs,
+                $result->usage->promptTokens,
+                $result->usage->completionTokens
+            );
+        }
+
         return $result->text;
+    }
+
+    /**
+     * Get the performance logger instance
+     *
+     * Override this method to provide a custom logger
+     */
+    protected function getPerformanceLogger(): ?Contracts\PerformanceLoggerInterface
+    {
+        if (! app()->bound(PerformanceLogger::class)) {
+            return null;
+        }
+
+        $logger = app(PerformanceLogger::class);
+
+        return $logger->isEnabled() ? $logger : null;
     }
 
     /**
@@ -256,5 +345,31 @@ abstract class Prompt implements PromptInterface
         Assert::numeric($configTemperature);
 
         return (float) $configTemperature;
+    }
+
+    /**
+     * Set custom API key
+     *
+     * Note: Do not reuse instances, use 1 request = 1 instance
+     */
+    public function withApiKey(string $apiKey): static
+    {
+        $this->providerConfig['api_key'] = $apiKey;
+
+        return $this;
+    }
+
+    /**
+     * Add provider configuration (generic)
+     *
+     * Note: Do not reuse instances, use 1 request = 1 instance
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public function withProviderConfig(array $config): static
+    {
+        $this->providerConfig = array_merge($this->providerConfig, $config);
+
+        return $this;
     }
 }

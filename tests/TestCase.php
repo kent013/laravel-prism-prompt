@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Because\PrismPrompt\Tests;
+namespace Kent013\PrismPrompt\Tests;
 
-use Because\PrismPrompt\PromptServiceProvider;
+use Kent013\PrismPrompt\PromptServiceProvider;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase

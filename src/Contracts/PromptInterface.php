@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Because\PrismPrompt\Contracts;
+namespace Kent013\PrismPrompt\Contracts;
 
 use React\Promise\PromiseInterface;
 
