@@ -47,6 +47,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Default Embedding Provider
+    |--------------------------------------------------------------------------
+    |
+    | The default provider for embedding generation.
+    | Separate from text provider since not all providers support embeddings.
+    |
+    */
+    'default_embedding_provider' => env('PRISM_EMBEDDING_PROVIDER', 'openai'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Embedding Model
+    |--------------------------------------------------------------------------
+    |
+    | The default model for embedding generation.
+    |
+    */
+    'default_embedding_model' => env('PRISM_EMBEDDING_MODEL', 'text-embedding-3-small'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Prompts Path
     |--------------------------------------------------------------------------
     |

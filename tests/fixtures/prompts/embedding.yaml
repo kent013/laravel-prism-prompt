@@ -1,0 +1,3 @@
+name: test-embedding
+provider: openai
+model: text-embedding-3-small

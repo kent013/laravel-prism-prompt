@@ -98,6 +98,57 @@ $result = (new GreetingPrompt('Alice'))
 
 **Note:** Do not reuse Prompt instances after calling these methods. Use one instance per request.
 
+## Embedding
+
+`EmbeddingPrompt` provides a parallel base class for embedding generation via `Prism::embeddings()`.
+
+### 1. Create an Embedding Class
+
+```php
+use Kent013\PrismPrompt\EmbeddingPrompt;
+
+class DocumentEmbedding extends EmbeddingPrompt
+{
+    protected function getTemplatePath(): string
+    {
+        return resource_path('prompts/document-embedding.yaml');
+    }
+}
+```
+
+```yaml
+# resources/prompts/document-embedding.yaml
+provider: openai
+model: text-embedding-3-small
+```
+
+### 2. Execute
+
+```php
+$embedding = (new DocumentEmbedding())
+    ->withApiKey($userApiKey)
+    ->executeSync('Text to embed');
+// Returns array<int, float>
+```
+
+### 3. Testing
+
+```php
+use Kent013\PrismPrompt\Testing\EmbeddingResponseFake;
+
+$fake = DocumentEmbedding::fake([
+    EmbeddingResponseFake::make()->withEmbedding([0.1, 0.2, 0.3]),
+]);
+
+$result = (new DocumentEmbedding())->executeSync('test');
+
+$fake->assertCallCount(1);
+$fake->assertTextContains('test');
+$fake->assertProvider('openai');
+
+DocumentEmbedding::stopFaking();
+```
+
 ## Testing with Fake
 
 Similar to `Prism::fake()`, you can mock prompt executions in tests:
@@ -253,6 +304,10 @@ return [
     'default_model' => env('PRISM_MODEL', 'claude-sonnet-4-5-20250929'),
     'default_max_tokens' => 4096,
     'default_temperature' => 0.7,
+
+    'default_embedding_provider' => env('PRISM_EMBEDDING_PROVIDER', 'openai'),
+    'default_embedding_model' => env('PRISM_EMBEDDING_MODEL', 'text-embedding-3-small'),
+
     'prompts_path' => resource_path('prompts'),
 
     'cache' => [

@@ -6,16 +6,15 @@ namespace Kent013\PrismPrompt;
 
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Log;
-use InvalidArgumentException;
 use JsonException;
 use Kent013\PrismPrompt\Contracts\PromptInterface;
 use Kent013\PrismPrompt\Exceptions\InvalidJsonResponseException;
 use Kent013\PrismPrompt\Testing\PromptFake;
 use Kent013\PrismPrompt\Testing\TextResponseFake;
+use Kent013\PrismPrompt\Traits\ResolvesProviderConfig;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Text\Response as TextResponse;
 use React\Promise\PromiseInterface;
-use Symfony\Component\Yaml\Yaml;
 use Webmozart\Assert\Assert;
 
 use function React\Async\async;
@@ -34,21 +33,13 @@ use function React\Async\async;
  */
 abstract class Prompt implements PromptInterface
 {
+    use ResolvesProviderConfig;
+
     protected static ?PromptFake $fake = null;
-
-    protected ?string $provider = null;
-
-    protected ?string $model = null;
 
     protected ?int $maxTokens = null;
 
     protected ?float $temperature = null;
-
-    /** @var array<string, mixed> */
-    protected array $metadata = [];
-
-    /** @var array<string, mixed> */
-    protected array $providerConfig = [];
 
     public function __construct()
     {
@@ -125,11 +116,6 @@ abstract class Prompt implements PromptInterface
     abstract protected function parseResponse(string $responseText): mixed;
 
     /**
-     * Get the path to the metadata YAML file
-     */
-    abstract protected function getTemplatePath(): string;
-
-    /**
      * Extract JSON from LLM response
      *
      * @return array<string, mixed>
@@ -138,11 +124,9 @@ abstract class Prompt implements PromptInterface
      */
     protected function extractJson(string $content): array
     {
-        // Try to extract ```json ... ``` block first
         if (preg_match('/```json\s*(.*?)\s*```/s', $content, $matches)) {
             $json = $matches[1];
         } elseif (preg_match('/\{[\s\S]*\}/', $content, $matches)) {
-            // Fallback to raw JSON object
             $json = $matches[0];
         } else {
             throw new InvalidJsonResponseException('No JSON found in response');
@@ -176,34 +160,7 @@ abstract class Prompt implements PromptInterface
         $promptTemplate = $this->metadata['prompt'] ?? '';
         Assert::stringNotEmpty($promptTemplate, 'Prompt template is empty in metadata');
 
-        // Use get_object_vars() to get public and protected properties (same as Mailable)
         return Blade::render($promptTemplate, get_object_vars($this));
-    }
-
-    /**
-     * Load YAML metadata
-     */
-    protected function loadMetadata(): void
-    {
-        $metadataPath = $this->getTemplatePath();
-
-        if (! file_exists($metadataPath)) {
-            return;
-        }
-
-        $content = file_get_contents($metadataPath);
-        Assert::string($content, "Failed to read metadata file: {$metadataPath}");
-
-        $metadata = Yaml::parse($content);
-        Assert::isArray($metadata, "Invalid YAML format in: {$metadataPath}");
-
-        // Ensure it's an associative array
-        if (array_keys($metadata) !== range(0, count($metadata) - 1)) {
-            /** @var array<string, mixed> $metadata */
-            $this->metadata = $metadata;
-        } else {
-            throw new InvalidArgumentException("Metadata must be an associative array: {$metadataPath}");
-        }
     }
 
     /**
@@ -215,7 +172,6 @@ abstract class Prompt implements PromptInterface
         $provider = $this->resolveProvider();
         $model = $this->resolveModel();
 
-        // Handle fake mode for testing
         if (static::isFaking() && static::$fake !== null) {
             static::$fake->record(static::class, $prompt, $provider, $model);
             $fakeResponse = static::$fake->nextResponse();
@@ -223,7 +179,6 @@ abstract class Prompt implements PromptInterface
             return $fakeResponse->getText();
         }
 
-        // Start performance logging
         $logger = $this->getPerformanceLogger();
         $executionId = $logger?->startExecution(static::class, $provider, $model, $prompt);
         $startTime = microtime(true);
@@ -236,7 +191,6 @@ abstract class Prompt implements PromptInterface
 
         Assert::isInstanceOf($result, TextResponse::class);
 
-        // Complete performance logging
         if ($logger && $executionId) {
             $durationMs = (microtime(true) - $startTime) * 1000;
             $logger->completeExecution(
@@ -253,8 +207,6 @@ abstract class Prompt implements PromptInterface
 
     /**
      * Get the performance logger instance
-     *
-     * Override this method to provide a custom logger
      */
     protected function getPerformanceLogger(): ?Contracts\PerformanceLoggerInterface
     {
@@ -265,46 +217,6 @@ abstract class Prompt implements PromptInterface
         $logger = app(PerformanceLogger::class);
 
         return $logger->isEnabled() ? $logger : null;
-    }
-
-    /**
-     * Resolve provider (class property > YAML > config)
-     */
-    protected function resolveProvider(): string
-    {
-        if ($this->provider !== null) {
-            return $this->provider;
-        }
-
-        $yamlProvider = $this->metadata['provider'] ?? null;
-        if (is_string($yamlProvider)) {
-            return $yamlProvider;
-        }
-
-        $configProvider = config('prism-prompt.default_provider', 'anthropic');
-        Assert::string($configProvider);
-
-        return $configProvider;
-    }
-
-    /**
-     * Resolve model (class property > YAML > config)
-     */
-    protected function resolveModel(): string
-    {
-        if ($this->model !== null) {
-            return $this->model;
-        }
-
-        $yamlModel = $this->metadata['model'] ?? null;
-        if (is_string($yamlModel)) {
-            return $yamlModel;
-        }
-
-        $configModel = config('prism-prompt.default_model', 'claude-sonnet-4-5-20250929');
-        Assert::string($configModel);
-
-        return $configModel;
     }
 
     /**
@@ -345,31 +257,5 @@ abstract class Prompt implements PromptInterface
         Assert::numeric($configTemperature);
 
         return (float) $configTemperature;
-    }
-
-    /**
-     * Set custom API key
-     *
-     * Note: Do not reuse instances, use 1 request = 1 instance
-     */
-    public function withApiKey(string $apiKey): static
-    {
-        $this->providerConfig['api_key'] = $apiKey;
-
-        return $this;
-    }
-
-    /**
-     * Add provider configuration (generic)
-     *
-     * Note: Do not reuse instances, use 1 request = 1 instance
-     *
-     * @param  array<string, mixed>  $config
-     */
-    public function withProviderConfig(array $config): static
-    {
-        $this->providerConfig = array_merge($this->providerConfig, $config);
-
-        return $this;
     }
 }
