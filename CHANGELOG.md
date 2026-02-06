@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `getTemplatePath()` を abstract から通常メソッドに変更（`ResolvesProviderConfig` trait）
 - `EmbeddingPrompt` を abstract から具象クラスに変更
+- `PromptTemplate` から `final` を削除（サブクラスで拡張可能に）
+- `PromptTemplate::fromYaml()` の戻り値を `self` → `static` に変更
+
+### Removed
+
+- `LoadsPromptTemplate` trait（フォールバックロジックはアプリケーション側で実装すべき）
+- `PromptTemplateNotFoundException`, `InvalidTemplatePathException`（`LoadsPromptTemplate` 依存）
+- `PromptTemplate::getScenarioType()`（シナリオ固有、アプリ側でサブクラスに実装すべき）
 
 ## [0.3.0] - 2026-02-06
 

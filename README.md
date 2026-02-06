@@ -283,25 +283,6 @@ protected function parseResponse(string $text): string
 
 ## Traits
 
-### LoadsPromptTemplate
-
-For loading templates with fallback resolution:
-
-```php
-use Kent013\PrismPrompt\Traits\LoadsPromptTemplate;
-
-class MyService
-{
-    use LoadsPromptTemplate;
-
-    public function process(array $prompts): void
-    {
-        // Tries: prompts/{$prompts['greeting']}.yaml, then prompts/common/greeting.yaml
-        $template = $this->loadTemplate($prompts, 'greeting');
-    }
-}
-```
-
 ### ValidatesPromptVariables
 
 For validating required variables:

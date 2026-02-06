@@ -16,8 +16,10 @@ use Webmozart\Assert\Assert;
  * @phpstan-type VariableDefinition array{name: string, path?: string, type?: string, description?: string}|string
  * @phpstan-type MetaVariables array{fromScenario?: array<int, VariableDefinition>, runtime?: array<int, VariableDefinition>}
  * @phpstan-type MetaStructure array{scenarioType?: string, label?: string, features?: array<string, mixed>, tags?: array<int, string>, variables?: MetaVariables}
+ *
+ * @phpstan-consistent-constructor
  */
-final readonly class PromptTemplate
+readonly class PromptTemplate
 {
     /**
      * @param  MetaStructure  $meta
@@ -35,7 +37,7 @@ final readonly class PromptTemplate
     /**
      * Create PromptTemplate from YAML file
      */
-    public static function fromYaml(string $path): self
+    public static function fromYaml(string $path): static
     {
         Assert::fileExists($path, "Prompt template file not found: {$path}");
 
@@ -43,7 +45,7 @@ final readonly class PromptTemplate
         if (self::isCacheEnabled()) {
             $cacheKey = self::getCacheKey($path);
             $cached = Cache::store(self::getCacheStore())->get($cacheKey);
-            if ($cached instanceof self) {
+            if ($cached instanceof static) {
                 return $cached;
             }
         }
@@ -78,7 +80,7 @@ final readonly class PromptTemplate
         $temperature = $data['temperature'] ?? config('prism-prompt.default_temperature', 0.7);
         Assert::numeric($temperature);
 
-        $instance = new self(
+        $instance = new static(
             name: $name,
             template: $template,
             meta: $meta,
@@ -117,14 +119,6 @@ final readonly class PromptTemplate
     public function getRuntimeVariables(): array
     {
         return $this->meta['variables']['runtime'] ?? [];
-    }
-
-    /**
-     * Get scenarioType
-     */
-    public function getScenarioType(): ?string
-    {
-        return $this->meta['scenarioType'] ?? null;
     }
 
     /**

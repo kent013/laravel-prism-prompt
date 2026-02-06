@@ -53,7 +53,6 @@ abstract class Prompt implements PromptInterface
      * Create a TextPrompt instance from YAML template name
      *
      * @param  array<string, mixed>  $variables
-     *
      * @return TextPrompt
      */
     public static function load(string $name, array $variables = []): self
