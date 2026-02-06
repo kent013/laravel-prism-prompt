@@ -99,6 +99,20 @@ class GreetingPrompt extends Prompt
 }
 ```
 
+Override `getPromptsBasePath()` to change the base directory:
+
+```php
+class MyPrompt extends Prompt
+{
+    protected function getPromptsBasePath(): string
+    {
+        return resource_path('my-prompts');
+    }
+    // ...
+}
+// Resolves: resources/my-prompts/my.yaml (naming convention)
+```
+
 You can still override `getTemplatePath()` for full path control.
 
 ## Runtime API Key Configuration

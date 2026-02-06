@@ -58,11 +58,8 @@ abstract class Prompt implements PromptInterface
      */
     public static function load(string $name, array $variables = []): self
     {
-        $basePath = config('prism-prompt.prompts_path', resource_path('prompts'));
-        Assert::string($basePath);
-
         $instance = new TextPrompt;
-        $instance->templatePath = $basePath.'/'.$name.'.yaml';
+        $instance->templatePath = $instance->getPromptsBasePath().'/'.$name.'.yaml';
         $instance->templateVariables = $variables;
         $instance->loadMetadata();
 
