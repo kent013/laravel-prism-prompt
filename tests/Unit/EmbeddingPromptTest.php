@@ -114,3 +114,31 @@ it('reports isFaking status correctly', function (): void {
     TestEmbeddingPrompt::stopFaking();
     expect(TestEmbeddingPrompt::isFaking())->toBeFalse();
 });
+
+// load() factory tests
+
+it('loads embedding from yaml name', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts');
+
+    $fake = EmbeddingPrompt::fake([
+        EmbeddingResponseFake::make()->withEmbedding([0.1, 0.2, 0.3]),
+    ]);
+
+    $result = EmbeddingPrompt::load('embedding')->executeSync('test text');
+
+    expect($result)->toBe([0.1, 0.2, 0.3]);
+    $fake->assertCallCount(1);
+    $fake->assertTextContains('test text');
+    $fake->assertProvider('openai');
+    $fake->assertModel('text-embedding-3-small');
+
+    EmbeddingPrompt::stopFaking();
+});
+
+it('loads embedding with withApiKey', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts');
+
+    $prompt = EmbeddingPrompt::load('embedding')->withApiKey('custom-key');
+
+    expect($prompt)->toBeInstanceOf(EmbeddingPrompt::class);
+});

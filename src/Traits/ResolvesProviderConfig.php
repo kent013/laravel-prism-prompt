@@ -26,10 +26,15 @@ trait ResolvesProviderConfig
     /** @var array<string, mixed> */
     protected array $providerConfig = [];
 
+    protected string $templatePath = '';
+
     /**
      * Get the path to the metadata YAML file
      */
-    abstract protected function getTemplatePath(): string;
+    protected function getTemplatePath(): string
+    {
+        return $this->templatePath;
+    }
 
     /**
      * Get the config key for the default provider

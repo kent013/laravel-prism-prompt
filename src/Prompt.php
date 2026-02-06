@@ -30,6 +30,7 @@ use function React\Async\async;
  * @template TResponse
  *
  * @implements PromptInterface<TResponse>
+ *
  */
 abstract class Prompt implements PromptInterface
 {
@@ -41,9 +42,31 @@ abstract class Prompt implements PromptInterface
 
     protected ?float $temperature = null;
 
+    /** @var array<string, mixed> */
+    protected array $templateVariables = [];
+
     public function __construct()
     {
         $this->loadMetadata();
+    }
+
+    /**
+     * Create a TextPrompt instance from YAML template name
+     *
+     * @param  array<string, mixed>  $variables
+     * @return TextPrompt
+     */
+    public static function load(string $name, array $variables = []): self
+    {
+        $basePath = config('prism-prompt.prompts_path', resource_path('prompts'));
+        Assert::string($basePath);
+
+        $instance = new TextPrompt;
+        $instance->templatePath = $basePath.'/'.$name.'.yaml';
+        $instance->templateVariables = $variables;
+        $instance->loadMetadata();
+
+        return $instance;
     }
 
     /**
@@ -109,7 +132,7 @@ abstract class Prompt implements PromptInterface
     }
 
     /**
-     * Parse response text into DTO (implement in each Prompt class)
+     * Parse response text into DTO (implement in each Prompt subclass)
      *
      * @return TResponse
      */
@@ -153,14 +176,16 @@ abstract class Prompt implements PromptInterface
     }
 
     /**
-     * Render Blade template with object properties
+     * Render Blade template with variables
      */
     protected function render(): string
     {
         $promptTemplate = $this->metadata['prompt'] ?? '';
         Assert::stringNotEmpty($promptTemplate, 'Prompt template is empty in metadata');
 
-        return Blade::render($promptTemplate, get_object_vars($this));
+        $variables = $this->templateVariables !== [] ? $this->templateVariables : get_object_vars($this);
+
+        return Blade::render($promptTemplate, $variables);
     }
 
     /**

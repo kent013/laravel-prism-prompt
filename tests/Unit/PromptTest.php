@@ -212,3 +212,46 @@ it('reports isFaking status correctly', function (): void {
     TestPrompt::stopFaking();
     expect(TestPrompt::isFaking())->toBeFalse();
 });
+
+// load() factory tests
+
+it('loads prompt from yaml name and renders with variables', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts/common');
+
+    $prompt = Prompt::load('greeting', ['userName' => 'Bob']);
+
+    $fake = Prompt::fake([
+        TextResponseFake::make()->withText('Hello Bob!'),
+    ]);
+
+    $result = $prompt->executeSync();
+
+    expect($result)->toBe('Hello Bob!');
+    $fake->assertPromptContains('Say hello to Bob');
+
+    Prompt::stopFaking();
+});
+
+it('loads prompt and resolves provider/model from yaml', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts/common');
+
+    $fake = Prompt::fake([
+        TextResponseFake::make()->withText('test'),
+    ]);
+
+    Prompt::load('greeting', ['userName' => 'Alice'])->executeSync();
+
+    $fake->assertProvider('anthropic');
+    $fake->assertModel('claude-sonnet-4-5-20250929');
+
+    Prompt::stopFaking();
+});
+
+it('loads prompt with withApiKey', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts/common');
+
+    $prompt = Prompt::load('greeting', ['userName' => 'Alice'])
+        ->withApiKey('custom-key');
+
+    expect($prompt)->toBeInstanceOf(Prompt::class);
+});

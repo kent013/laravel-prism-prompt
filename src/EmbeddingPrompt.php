@@ -19,8 +19,10 @@ use function React\Async\async;
  * Base class for embedding prompts
  *
  * @implements EmbeddingPromptInterface<array<int, float>>
+ *
+ * @phpstan-consistent-constructor
  */
-abstract class EmbeddingPrompt implements EmbeddingPromptInterface
+class EmbeddingPrompt implements EmbeddingPromptInterface
 {
     use ResolvesProviderConfig;
 
@@ -29,6 +31,23 @@ abstract class EmbeddingPrompt implements EmbeddingPromptInterface
     public function __construct()
     {
         $this->loadMetadata();
+    }
+
+    /**
+     * Create instance from YAML template name
+     *
+     * @return static
+     */
+    public static function load(string $name): static
+    {
+        $basePath = config('prism-prompt.prompts_path', resource_path('prompts'));
+        Assert::string($basePath);
+
+        $instance = new static;
+        $instance->templatePath = $basePath.'/'.$name.'.yaml';
+        $instance->loadMetadata();
+
+        return $instance;
     }
 
     /**

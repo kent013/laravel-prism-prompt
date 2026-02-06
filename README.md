@@ -26,7 +26,9 @@ Settings are resolved in the following priority (high to low):
 
 ## Usage
 
-### 1. Create a YAML Template
+### Quick Start with `load()`
+
+Just write a YAML template and use `Prompt::load()` — no PHP class needed:
 
 ```yaml
 # resources/prompts/greeting.yaml
@@ -38,10 +40,20 @@ temperature: 0.7
 
 prompt: |
   Say hello to {{ $userName }}.
-  Return JSON: {"message": "...", "tone": "..."}
 ```
 
-### 2. Create a Prompt Class
+```php
+use Kent013\PrismPrompt\Prompt;
+
+$result = Prompt::load('greeting', ['userName' => 'Alice'])->executeSync();
+// Returns raw text string
+```
+
+`load()` resolves YAML from `{config('prism-prompt.prompts_path')}/{name}.yaml`.
+
+### Subclass for Custom Response Parsing
+
+When you need DTO mapping or custom logic, create a subclass:
 
 ```php
 use Kent013\PrismPrompt\Prompt;
@@ -65,16 +77,8 @@ class GreetingPrompt extends Prompt
         return new GreetingResponse($data['message'], $data['tone']);
     }
 }
-```
 
-### 3. Execute
-
-```php
-// Synchronous
 $result = (new GreetingPrompt('Alice'))->executeSync();
-
-// Asynchronous (requires react/promise)
-$promise = (new GreetingPrompt('Alice'))->execute();
 ```
 
 ## Runtime API Key Configuration
@@ -100,21 +104,9 @@ $result = (new GreetingPrompt('Alice'))
 
 ## Embedding
 
-`EmbeddingPrompt` provides a parallel base class for embedding generation via `Prism::embeddings()`.
+`EmbeddingPrompt` provides embedding generation via `Prism::embeddings()`.
 
-### 1. Create an Embedding Class
-
-```php
-use Kent013\PrismPrompt\EmbeddingPrompt;
-
-class DocumentEmbedding extends EmbeddingPrompt
-{
-    protected function getTemplatePath(): string
-    {
-        return resource_path('prompts/document-embedding.yaml');
-    }
-}
-```
+### Quick Start with `load()`
 
 ```yaml
 # resources/prompts/document-embedding.yaml
@@ -122,31 +114,32 @@ provider: openai
 model: text-embedding-3-small
 ```
 
-### 2. Execute
-
 ```php
-$embedding = (new DocumentEmbedding())
+use Kent013\PrismPrompt\EmbeddingPrompt;
+
+$embedding = EmbeddingPrompt::load('document-embedding')
     ->withApiKey($userApiKey)
     ->executeSync('Text to embed');
 // Returns array<int, float>
 ```
 
-### 3. Testing
+### Testing
 
 ```php
+use Kent013\PrismPrompt\EmbeddingPrompt;
 use Kent013\PrismPrompt\Testing\EmbeddingResponseFake;
 
-$fake = DocumentEmbedding::fake([
+$fake = EmbeddingPrompt::fake([
     EmbeddingResponseFake::make()->withEmbedding([0.1, 0.2, 0.3]),
 ]);
 
-$result = (new DocumentEmbedding())->executeSync('test');
+$result = EmbeddingPrompt::load('document-embedding')->executeSync('test');
 
 $fake->assertCallCount(1);
 $fake->assertTextContains('test');
 $fake->assertProvider('openai');
 
-DocumentEmbedding::stopFaking();
+EmbeddingPrompt::stopFaking();
 ```
 
 ## Testing with Fake

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-02-06
+
+### Added
+
+- **`Prompt::load()`**: YAML名を指定するだけでPromptを実行可能（PHPクラス不要）
+  - `Prompt::load('greeting', ['userName' => 'Alice'])->executeSync()`
+  - Returns raw text via `TextPrompt` (concrete `Prompt<string>`)
+- **`EmbeddingPrompt::load()`**: YAML名を指定するだけでEmbeddingを実行可能
+  - `EmbeddingPrompt::load('document-embedding')->executeSync('text')`
+- **`TextPrompt`**: `Prompt<string>` の具象クラス（`load()` ファクトリで使用）
+
+### Changed
+
+- `getTemplatePath()` を abstract から通常メソッドに変更（`ResolvesProviderConfig` trait）
+- `EmbeddingPrompt` を abstract から具象クラスに変更
+
 ## [0.3.0] - 2026-02-06
 
 ### Added
