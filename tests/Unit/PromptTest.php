@@ -49,6 +49,14 @@ class TestPrompt extends Prompt
     {
         return $this->resolveMaxTokens();
     }
+
+    /**
+     * @return array{provider: string, model: string, config: array<string, mixed>}
+     */
+    public function testSelectOptimalProvider(): array
+    {
+        return $this->selectOptimalProvider();
+    }
 }
 
 // Naming convention test: TestPrompt → test.yaml (but this class overrides getTemplatePath)
@@ -379,4 +387,122 @@ it('resolves yaml by $promptsDirectory with $promptName', function (): void {
 
     expect($prompt->testResolveProvider())->toBe('openai');
     expect($prompt->testResolveModel())->toBe('gpt-4o');
+});
+
+// Multiple models support tests
+
+class MultiModelPrompt extends Prompt
+{
+    public function __construct(
+        public readonly string $userName,
+    ) {
+        parent::__construct();
+    }
+
+    protected function getTemplatePath(): string
+    {
+        return __DIR__.'/../fixtures/prompts/common/multi-model.yaml';
+    }
+
+    protected function parseResponse(string $responseText): string
+    {
+        return $responseText;
+    }
+
+    /**
+     * @return array{provider: string, model: string, config: array<string, mixed>}
+     */
+    public function testSelectOptimalProvider(): array
+    {
+        return $this->selectOptimalProvider();
+    }
+}
+
+it('selects provider from models list based on available API keys', function (): void {
+    $prompt = new MultiModelPrompt('Alice');
+    $prompt->withApiKeys([
+        'openai' => 'sk-openai-test',
+        'google' => 'google-api-key',
+    ]);
+
+    $selected = $prompt->testSelectOptimalProvider();
+
+    // Should select openai (priority 2) since anthropic (priority 1) is not available
+    expect($selected['provider'])->toBe('openai');
+    expect($selected['model'])->toBe('gpt-4o');
+    expect($selected['config'])->toBe(['api_key' => 'sk-openai-test']);
+});
+
+it('selects highest priority provider when multiple API keys are provided', function (): void {
+    $prompt = new MultiModelPrompt('Alice');
+    $prompt->withApiKeys([
+        'anthropic' => 'sk-ant-test',
+        'openai' => 'sk-openai-test',
+        'google' => 'google-api-key',
+    ]);
+
+    $selected = $prompt->testSelectOptimalProvider();
+
+    // Should select anthropic (priority 1)
+    expect($selected['provider'])->toBe('anthropic');
+    expect($selected['model'])->toBe('claude-sonnet-4-5-20250929');
+    expect($selected['config'])->toBe(['api_key' => 'sk-ant-test']);
+});
+
+it('falls back to default provider when no matching API keys', function (): void {
+    $prompt = new MultiModelPrompt('Alice');
+    $prompt->withApiKeys([
+        'unknown' => 'some-key',
+    ]);
+
+    $selected = $prompt->testSelectOptimalProvider();
+
+    // Should fallback to YAML default (anthropic)
+    expect($selected['provider'])->toBe('anthropic');
+    expect($selected['model'])->toBe('claude-sonnet-4-5-20250929');
+    expect($selected['config'])->toBe([]);
+});
+
+it('uses default provider when withApiKeys is not called', function (): void {
+    $prompt = new MultiModelPrompt('Alice');
+
+    $selected = $prompt->testSelectOptimalProvider();
+
+    // Should use YAML default (anthropic)
+    expect($selected['provider'])->toBe('anthropic');
+    expect($selected['model'])->toBe('claude-sonnet-4-5-20250929');
+    expect($selected['config'])->toBe([]);
+});
+
+it('supports withProviderConfigs for detailed configuration', function (): void {
+    $prompt = new MultiModelPrompt('Alice');
+    $prompt->withProviderConfigs([
+        'openai' => [
+            'api_key' => 'sk-openai-test',
+            'url' => 'https://custom-openai.example.com',
+        ],
+    ]);
+
+    $selected = $prompt->testSelectOptimalProvider();
+
+    expect($selected['provider'])->toBe('openai');
+    expect($selected['model'])->toBe('gpt-4o');
+    expect($selected['config'])->toBe([
+        'api_key' => 'sk-openai-test',
+        'url' => 'https://custom-openai.example.com',
+    ]);
+});
+
+it('respects priority order in models list', function (): void {
+    $prompt = new MultiModelPrompt('Alice');
+    $prompt->withApiKeys([
+        'google' => 'google-key',  // priority 3
+        'openai' => 'openai-key',  // priority 2
+    ]);
+
+    $selected = $prompt->testSelectOptimalProvider();
+
+    // Should select openai (priority 2) over google (priority 3)
+    expect($selected['provider'])->toBe('openai');
+    expect($selected['model'])->toBe('gpt-4o');
 });

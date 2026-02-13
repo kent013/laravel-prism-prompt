@@ -134,6 +134,103 @@ $result = (new GreetingPrompt('Alice'))
 
 **Note:** Do not reuse Prompt instances after calling these methods. Use one instance per request.
 
+### Multiple Provider Fallback (Planned Feature)
+
+You can configure multiple models with automatic selection based on available API keys.
+
+#### YAML Configuration
+
+Add `models` field to specify available models in priority order:
+
+```yaml
+name: greeting
+# System default (used when no user API keys provided)
+provider: anthropic
+model: claude-sonnet-4-5-20250929
+max_tokens: 1024
+temperature: 0.7
+
+# Available models (used when multiple API keys provided via withApiKeys)
+models:
+  - provider: anthropic
+    model: claude-sonnet-4-5-20250929
+    priority: 1
+  - provider: openai
+    model: gpt-4o
+    priority: 2
+  - provider: google
+    model: gemini-2.0-flash-exp
+    priority: 3
+
+prompt: |
+  Say hello to {{ $userName }}.
+```
+
+#### Runtime Usage
+
+**System use (no user API keys):**
+```php
+// Uses provider/model from YAML
+$result = Prompt::load('greeting', ['userName' => 'Alice'])->executeSync();
+```
+
+**Single user API key:**
+```php
+// Uses provider/model from YAML with provided key
+$result = Prompt::load('greeting', ['userName' => 'Alice'])
+    ->withApiKey($userApiKey)
+    ->executeSync();
+```
+
+**Multiple user API keys (automatic selection):**
+```php
+use Kent013\PrismPrompt\Prompt;
+
+// Method 1: withApiKeys (simple)
+$result = Prompt::load('greeting', ['userName' => 'Alice'])
+    ->withApiKeys([
+        'anthropic' => 'sk-ant-...',
+        'openai' => 'sk-...',
+        'google' => 'API_KEY...',
+    ])
+    ->executeSync();
+
+// Method 2: withProviderConfigs (with additional options)
+$result = Prompt::load('greeting', ['userName' => 'Alice'])
+    ->withProviderConfigs([
+        'anthropic' => ['api_key' => 'sk-ant-...'],
+        'openai' => [
+            'api_key' => 'sk-...',
+            'url' => 'https://custom-openai-endpoint.com',
+        ],
+    ])
+    ->executeSync();
+```
+
+When multiple API keys are provided, the package automatically selects the highest-priority model from the `models` list for which you have provided an API key. If `anthropic` key is provided, it will be used. If not, it will fallback to `openai`, and so on.
+
+#### Use Cases
+
+**User-provided API Keys**
+When users provide their own API keys, you may not know which provider they prefer. By specifying `models`, the system will automatically select the best available option.
+
+```php
+// User has only OpenAI key, but prompt prefers Anthropic
+$result = Prompt::load('greeting', ['userName' => $userName])
+    ->withApiKeys([
+        'openai' => $userApiKey,  // Only OpenAI key available
+    ])
+    ->executeSync();
+// Automatically uses OpenAI since Anthropic key is not available
+```
+
+**Provider Redundancy**
+If you want to ensure high availability, configure fallback models in case the primary provider is unavailable.
+
+#### Backward Compatibility
+
+Existing YAML files without `models` continue to work as before. The feature is entirely opt-in.
+
 ## Embedding
 
 `EmbeddingPrompt` provides embedding generation via `Prism::embeddings()`.
@@ -299,6 +396,105 @@ class MyService
         $this->validateVariables($variables, $template);
     }
 }
+```
+
+## YAML Template Reference
+
+### Basic Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | No | Template name (informational) |
+| `version` | No | Template version (informational) |
+| `description` | No | Template description (informational) |
+| `provider` | No | Default LLM provider (e.g., `anthropic`, `openai`, `google`) |
+| `model` | No | Default model name |
+| `max_tokens` | No | Maximum tokens in response |
+| `temperature` | No | Response randomness (0.0 - 1.0) |
+| `prompt` | Yes | Blade template for the prompt |
+
+### Multiple Models Support
+
+The `models` field allows automatic selection when multiple API keys are provided:
+
+```yaml
+# System default
+provider: anthropic
+model: claude-sonnet-4-5-20250929
+
+# Available models (for withApiKeys)
+models:
+  - provider: anthropic          # Provider name (required)
+    model: claude-sonnet-4-5     # Model name (required)
+    priority: 1                  # Priority (lower = higher priority, optional, default: 999)
+  - provider: openai
+    model: gpt-4o
+    priority: 2
+```
+
+**`models` fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `provider` | Yes | Provider name (e.g., `anthropic`, `openai`) |
+| `model` | Yes | Model identifier |
+| `priority` | No | Selection priority (lower number = higher priority, default: 999) |
+
+**Priority behavior:**
+- Lower values have higher priority (e.g., `priority: 1` is selected before `priority: 2`)
+- If not specified, defaults to `999`
+- When multiple API keys are provided via `withApiKeys()`, the system selects the available model with the lowest priority value
+- When no API keys are provided or only single key via `withApiKey()`, the system uses `provider`/`model` fields
+
+### Meta Section
+
+The `meta` section supports custom application metadata:
+
+```yaml
+meta:
+  # Custom metadata for your application
+  variables:
+    runtime:
+      - userName
+      - npcName
+```
+
+### Complete Example
+
+```yaml
+name: generate_greeting
+version: 1.0.0
+description: Generate personalized greeting message
+
+# System default settings
+provider: anthropic
+model: claude-sonnet-4-5-20250929
+max_tokens: 500
+temperature: 0.8
+
+# Available models (for withApiKeys)
+models:
+  - provider: anthropic
+    model: claude-sonnet-4-5-20250929
+    priority: 1
+  - provider: openai
+    model: gpt-4o
+    priority: 2
+
+# Custom application metadata
+meta:
+  variables:
+    runtime:
+      - userName
+      - userRole
+      - scenarioTitle
+
+prompt: |
+  ## Context
+  Scenario: {{ $scenarioTitle }}
+
+  ## Task
+  Generate a greeting for {{ $userName }} ({{ $userRole }}).
 ```
 
 ## Configuration Reference

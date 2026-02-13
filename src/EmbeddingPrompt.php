@@ -117,8 +117,11 @@ class EmbeddingPrompt implements EmbeddingPromptInterface
      */
     protected function executePrismEmbedding(string $text): array
     {
-        $provider = $this->resolveProvider();
-        $model = $this->resolveModel();
+        $selected = $this->selectOptimalProvider();
+
+        $provider = $selected['provider'];
+        $model = $selected['model'];
+        $config = $selected['config'];
 
         if (static::isFaking() && static::$fake !== null) {
             static::$fake->record(static::class, $text, $provider, $model);
@@ -132,7 +135,7 @@ class EmbeddingPrompt implements EmbeddingPromptInterface
         $startTime = microtime(true);
 
         $result = Prism::embeddings()
-            ->using($provider, $model, $this->providerConfig)
+            ->using($provider, $model, $config)
             ->fromInput($text)
             ->asEmbeddings();
 

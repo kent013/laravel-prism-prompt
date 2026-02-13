@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-02-14
+
+### Added
+
+- **Multiple Provider Fallback**: Automatic provider/model selection based on available API keys
+  - `withApiKeys(array $apiKeys)`: Set multiple API keys for automatic selection
+  - `withProviderConfigs(array $configs)`: Set multiple provider configurations with additional options
+  - `models` field in YAML: Specify available models with priority order
+  - Automatic selection from `models` list when multiple API keys are provided
+  - Falls back to default `provider`/`model` when no match found
+- **Priority-based Selection**: Lower priority number = higher priority (e.g., `priority: 1` before `priority: 2`)
+
+### Changed
+
+- `Prompt::executePrism()` now uses `selectOptimalProvider()` for provider selection
+- `EmbeddingPrompt::executePrismEmbedding()` now uses `selectOptimalProvider()` for provider selection
+
+### Internal
+
+- Added `ResolvesProviderConfig::selectOptimalProvider()` method
+- Added `ResolvesProviderConfig::selectFromModels()` method
+- Added `$availableProviders` property to track multiple provider configurations
+
 ## [0.4.1] - 2026-02-06
 
 ### Changed

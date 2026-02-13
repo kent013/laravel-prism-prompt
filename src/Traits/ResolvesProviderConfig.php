@@ -28,6 +28,9 @@ trait ResolvesProviderConfig
     /** @var array<string, mixed> */
     protected array $providerConfig = [];
 
+    /** @var array<string, array<string, mixed>> */
+    protected array $availableProviders = [];
+
     protected string $templatePath = '';
 
     protected string $promptName = '';
@@ -190,5 +193,110 @@ trait ResolvesProviderConfig
         $this->providerConfig = array_merge($this->providerConfig, $config);
 
         return $this;
+    }
+
+    /**
+     * Set multiple API keys for automatic provider selection
+     *
+     * @param  array<string, string>  $apiKeys  ['provider' => 'api_key']
+     */
+    public function withApiKeys(array $apiKeys): static
+    {
+        foreach ($apiKeys as $provider => $apiKey) {
+            Assert::string($provider);
+            Assert::string($apiKey);
+            $this->availableProviders[$provider] = ['api_key' => $apiKey];
+        }
+
+        return $this;
+    }
+
+    /**
+     * Set multiple provider configurations for automatic provider selection
+     *
+     * @param  array<string, array<string, mixed>>  $configs  ['provider' => ['api_key' => '...', ...]]
+     */
+    public function withProviderConfigs(array $configs): static
+    {
+        foreach ($configs as $provider => $config) {
+            Assert::string($provider);
+            Assert::isArray($config);
+            $this->availableProviders[$provider] = $config;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Select optimal provider based on available API keys and YAML configuration
+     *
+     * @return array{provider: string, model: string, config: array<string, mixed>}
+     */
+    protected function selectOptimalProvider(): array
+    {
+        // 1. Class property takes precedence
+        if ($this->provider !== null) {
+            return [
+                'provider' => $this->provider,
+                'model' => $this->model ?? $this->resolveModel(),
+                'config' => $this->providerConfig,
+            ];
+        }
+
+        // 2. Multiple API keys provided - select from models list
+        if ($this->availableProviders !== [] && isset($this->metadata['models']) && is_array($this->metadata['models'])) {
+            return $this->selectFromModels($this->metadata['models']);
+        }
+
+        // 3. Default: use provider/model from YAML or config
+        return [
+            'provider' => $this->resolveProvider(),
+            'model' => $this->resolveModel(),
+            'config' => $this->providerConfig,
+        ];
+    }
+
+    /**
+     * Select provider from models list based on available API keys
+     *
+     * @param  array<int, array<string, mixed>>  $models
+     *
+     * @return array{provider: string, model: string, config: array<string, mixed>}
+     */
+    private function selectFromModels(array $models): array
+    {
+        // Sort by priority (lower number = higher priority)
+        usort($models, function ($a, $b) {
+            $priorityA = is_int($a['priority'] ?? null) ? $a['priority'] : 999;
+            $priorityB = is_int($b['priority'] ?? null) ? $b['priority'] : 999;
+
+            return $priorityA <=> $priorityB;
+        });
+
+        // Find first available provider
+        foreach ($models as $option) {
+            if (! isset($option['provider'], $option['model'])) {
+                continue;
+            }
+
+            $provider = $option['provider'];
+            Assert::string($provider);
+            Assert::string($option['model']);
+
+            if (isset($this->availableProviders[$provider])) {
+                return [
+                    'provider' => $provider,
+                    'model' => $option['model'],
+                    'config' => $this->availableProviders[$provider],
+                ];
+            }
+        }
+
+        // No match found - fallback to default
+        return [
+            'provider' => $this->resolveProvider(),
+            'model' => $this->resolveModel(),
+            'config' => $this->providerConfig,
+        ];
     }
 }

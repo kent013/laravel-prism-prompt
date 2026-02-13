@@ -53,6 +53,7 @@ abstract class Prompt implements PromptInterface
      * Create a TextPrompt instance from YAML template name
      *
      * @param  array<string, mixed>  $variables
+     *
      * @return TextPrompt
      */
     public static function load(string $name, array $variables = []): self
@@ -193,8 +194,11 @@ abstract class Prompt implements PromptInterface
     protected function executePrism(): string
     {
         $prompt = $this->render();
-        $provider = $this->resolveProvider();
-        $model = $this->resolveModel();
+        $selected = $this->selectOptimalProvider();
+
+        $provider = $selected['provider'];
+        $model = $selected['model'];
+        $config = $selected['config'];
 
         if (static::isFaking() && static::$fake !== null) {
             static::$fake->record(static::class, $prompt, $provider, $model);
@@ -208,7 +212,7 @@ abstract class Prompt implements PromptInterface
         $startTime = microtime(true);
 
         $result = Prism::text()
-            ->using($provider, $model, $this->providerConfig)
+            ->using($provider, $model, $config)
             ->withPrompt($prompt)
             ->withMaxTokens($this->resolveMaxTokens())
             ->asText();
