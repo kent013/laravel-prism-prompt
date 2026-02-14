@@ -6,15 +6,21 @@ namespace Kent013\PrismPrompt;
 
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use JsonException;
 use Kent013\PrismPrompt\Contracts\PromptInterface;
 use Kent013\PrismPrompt\Exceptions\InvalidJsonResponseException;
 use Kent013\PrismPrompt\Testing\PromptFake;
 use Kent013\PrismPrompt\Testing\TextResponseFake;
 use Kent013\PrismPrompt\Traits\ResolvesProviderConfig;
+use Prism\Prism\Contracts\Message;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Text\Response as TextResponse;
+use Prism\Prism\ValueObjects\Messages\AssistantMessage;
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 use React\Promise\PromiseInterface;
+use RuntimeException;
 use Webmozart\Assert\Assert;
 
 use function React\Async\async;
@@ -176,16 +182,118 @@ abstract class Prompt implements PromptInterface
     }
 
     /**
-     * Render Blade template with variables
+     * Render Blade template with variables (prompt field)
      */
     protected function render(): string
     {
         $promptTemplate = $this->metadata['prompt'] ?? '';
         Assert::stringNotEmpty($promptTemplate, 'Prompt template is empty in metadata');
 
-        $variables = $this->templateVariables !== [] ? $this->templateVariables : get_object_vars($this);
+        return Blade::render($promptTemplate, $this->resolveTemplateVariables());
+    }
 
-        return Blade::render($promptTemplate, $variables);
+    /**
+     * Render system_prompt field from YAML
+     */
+    protected function renderSystemPrompt(): ?string
+    {
+        $template = $this->metadata['system_prompt'] ?? null;
+        if (! is_string($template) || $template === '') {
+            return null;
+        }
+
+        return Blade::render($template, $this->resolveTemplateVariables());
+    }
+
+    /**
+     * Resolve template variables for Blade rendering
+     *
+     * @return array<string, mixed>
+     */
+    protected function resolveTemplateVariables(): array
+    {
+        return $this->templateVariables !== [] ? $this->templateVariables : get_object_vars($this);
+    }
+
+    /**
+     * Build message array for Prism
+     *
+     * Override this for complete control over the message structure.
+     *
+     * @return array<int, Message>
+     */
+    protected function buildMessages(): array
+    {
+        $messages = [];
+
+        $system = $this->buildSystemMessage();
+        if ($system !== null) {
+            $messages[] = $system;
+        }
+
+        $messages = array_merge($messages, $this->buildConversationMessages());
+
+        $this->validateMessages($messages);
+
+        return $messages;
+    }
+
+    /**
+     * Build system message from YAML system_prompt
+     *
+     * Override this to customize the system message.
+     */
+    protected function buildSystemMessage(): ?SystemMessage
+    {
+        $content = $this->renderSystemPrompt();
+
+        return $content !== null ? new SystemMessage($content) : null;
+    }
+
+    /**
+     * Build conversation messages (user/assistant)
+     *
+     * Override this to provide custom message structure (e.g. conversation history).
+     *
+     * @return array<int, Message>
+     */
+    protected function buildConversationMessages(): array
+    {
+        return [new UserMessage($this->render())];
+    }
+
+    /**
+     * Validate message array constraints
+     *
+     * @param  array<int, Message>  $messages
+     */
+    protected function validateMessages(array $messages): void
+    {
+        if ($messages === []) {
+            throw new RuntimeException('Messages array cannot be empty');
+        }
+
+        $last = end($messages);
+        if (! $last instanceof UserMessage) {
+            throw new InvalidArgumentException('Last message must be a UserMessage');
+        }
+
+        $systemCount = 0;
+        $systemIndex = -1;
+        foreach ($messages as $index => $msg) {
+            if ($msg instanceof SystemMessage) {
+                $systemCount++;
+                $systemIndex = $index;
+            }
+        }
+
+        if ($systemCount > 1) {
+            throw new InvalidArgumentException('Multiple SystemMessages are not allowed');
+        }
+
+        if ($systemCount === 1 && $systemIndex !== 0) {
+            throw new InvalidArgumentException('SystemMessage must be the first message');
+        }
     }
 
     /**
@@ -193,7 +301,7 @@ abstract class Prompt implements PromptInterface
      */
     protected function executePrism(): string
     {
-        $prompt = $this->render();
+        $messages = $this->buildMessages();
         $selected = $this->selectOptimalProvider();
 
         $provider = $selected['provider'];
@@ -201,19 +309,20 @@ abstract class Prompt implements PromptInterface
         $config = $selected['config'];
 
         if (static::isFaking() && static::$fake !== null) {
-            static::$fake->record(static::class, $prompt, $provider, $model);
+            static::$fake->record(static::class, $messages, $provider, $model);
             $fakeResponse = static::$fake->nextResponse();
 
             return $fakeResponse->getText();
         }
 
         $logger = $this->getPerformanceLogger();
-        $executionId = $logger?->startExecution(static::class, $provider, $model, $prompt);
+        $promptForLog = $this->messagesToString($messages);
+        $executionId = $logger?->startExecution(static::class, $provider, $model, $promptForLog);
         $startTime = microtime(true);
 
         $result = Prism::text()
             ->using($provider, $model, $config)
-            ->withPrompt($prompt)
+            ->withMessages($messages)
             ->withMaxTokens($this->resolveMaxTokens())
             ->asText();
 
@@ -285,5 +394,28 @@ abstract class Prompt implements PromptInterface
         Assert::numeric($configTemperature);
 
         return (float) $configTemperature;
+    }
+
+    /**
+     * Convert message array to string for logging
+     *
+     * @param  array<int, Message>  $messages
+     */
+    private function messagesToString(array $messages): string
+    {
+        $parts = [];
+        foreach ($messages as $msg) {
+            $role = match (true) {
+                $msg instanceof SystemMessage => 'system',
+                $msg instanceof UserMessage => 'user',
+                $msg instanceof AssistantMessage => 'assistant',
+                default => 'unknown',
+            };
+            $content = $msg->content;
+            $truncated = mb_substr($content, 0, 200);
+            $parts[] = "[{$role}] {$truncated}".(mb_strlen($content) > 200 ? '...' : '');
+        }
+
+        return implode("\n", $parts);
     }
 }

@@ -7,12 +7,15 @@ namespace Kent013\PrismPrompt\Testing;
 use Closure;
 use Exception;
 use PHPUnit\Framework\Assert as PHPUnit;
+use Prism\Prism\Contracts\Message;
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 
 class PromptFake
 {
     protected int $responseSequence = 0;
 
-    /** @var array<int, array{prompt_class: string, prompt: string, provider: string, model: string}> */
+    /** @var array<int, array{prompt_class: string, messages: array<int, Message>, provider: string, model: string}> */
     protected array $recorded = [];
 
     /**
@@ -22,12 +25,14 @@ class PromptFake
 
     /**
      * Record a prompt execution
+     *
+     * @param  array<int, Message>  $messages
      */
-    public function record(string $promptClass, string $prompt, string $provider, string $model): void
+    public function record(string $promptClass, array $messages, string $provider, string $model): void
     {
         $this->recorded[] = [
             'prompt_class' => $promptClass,
-            'prompt' => $prompt,
+            'messages' => $messages,
             'provider' => $provider,
             'model' => $model,
         ];
@@ -56,7 +61,7 @@ class PromptFake
     /**
      * Assert with a callback
      *
-     * @param  Closure(array<int, array{prompt_class: string, prompt: string, provider: string, model: string}>):void  $fn
+     * @param  Closure(array<int, array{prompt_class: string, messages: array<int, Message>, provider: string, model: string}>):void  $fn
      */
     public function assertRequest(Closure $fn): void
     {
@@ -78,31 +83,107 @@ class PromptFake
     }
 
     /**
-     * Assert a specific prompt text was sent
-     */
-    public function assertPrompt(string $prompt): void
-    {
-        $prompts = collect($this->recorded)
-            ->pluck('prompt');
-
-        PHPUnit::assertTrue(
-            $prompts->contains($prompt),
-            "Could not find prompt '{$prompt}' in the recorded requests"
-        );
-    }
-
-    /**
-     * Assert prompt contains specific text
+     * Assert any message contains specific text
      */
     public function assertPromptContains(string $text): void
     {
         $found = collect($this->recorded)
-            ->pluck('prompt')
-            ->contains(fn (string $prompt) => str_contains($prompt, $text));
+            ->contains(function (array $record) use ($text): bool {
+                foreach ($record['messages'] as $message) {
+                    if (str_contains($message->content, $text)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
 
         PHPUnit::assertTrue(
             $found,
-            "Could not find text '{$text}' in any recorded prompt"
+            "Could not find text '{$text}' in any recorded message"
+        );
+    }
+
+    /**
+     * Assert system message contains specific text
+     */
+    public function assertSystemMessageContains(string $text): void
+    {
+        $found = collect($this->recorded)
+            ->contains(function (array $record) use ($text): bool {
+                foreach ($record['messages'] as $message) {
+                    if ($message instanceof SystemMessage && str_contains($message->content, $text)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        PHPUnit::assertTrue(
+            $found,
+            "Could not find text '{$text}' in any recorded system message"
+        );
+    }
+
+    /**
+     * Assert user message contains specific text
+     */
+    public function assertUserMessageContains(string $text): void
+    {
+        $found = collect($this->recorded)
+            ->contains(function (array $record) use ($text): bool {
+                foreach ($record['messages'] as $message) {
+                    if ($message instanceof UserMessage && str_contains($message->content, $text)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        PHPUnit::assertTrue(
+            $found,
+            "Could not find text '{$text}' in any recorded user message"
+        );
+    }
+
+    /**
+     * Assert message count for the latest recorded request
+     */
+    public function assertMessageCount(int $expectedCount): void
+    {
+        $lastRecord = end($this->recorded);
+        PHPUnit::assertNotFalse($lastRecord, 'No recorded requests found');
+
+        $actualCount = count($lastRecord['messages']);
+
+        PHPUnit::assertSame(
+            $expectedCount,
+            $actualCount,
+            "Expected {$expectedCount} messages, got {$actualCount}"
+        );
+    }
+
+    /**
+     * Assert that a system message exists in the recorded requests
+     */
+    public function assertHasSystemMessage(): void
+    {
+        $found = collect($this->recorded)
+            ->contains(function (array $record): bool {
+                foreach ($record['messages'] as $message) {
+                    if ($message instanceof SystemMessage) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        PHPUnit::assertTrue(
+            $found,
+            'No system message found in any recorded request'
         );
     }
 
@@ -151,7 +232,7 @@ class PromptFake
     /**
      * Get all recorded requests
      *
-     * @return array<int, array{prompt_class: string, prompt: string, provider: string, model: string}>
+     * @return array<int, array{prompt_class: string, messages: array<int, Message>, provider: string, model: string}>
      */
     public function recorded(): array
     {

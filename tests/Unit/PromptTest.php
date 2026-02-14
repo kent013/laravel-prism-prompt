@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Kent013\PrismPrompt\Exceptions\InvalidJsonResponseException;
 use Kent013\PrismPrompt\Prompt;
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 
 // Create a concrete test implementation
 class TestPrompt extends Prompt
@@ -56,6 +58,21 @@ class TestPrompt extends Prompt
     public function testSelectOptimalProvider(): array
     {
         return $this->selectOptimalProvider();
+    }
+
+    public function testBuildMessages(): array
+    {
+        return $this->buildMessages();
+    }
+
+    public function testBuildSystemMessage(): ?\Prism\Prism\ValueObjects\Messages\SystemMessage
+    {
+        return $this->buildSystemMessage();
+    }
+
+    public function testBuildConversationMessages(): array
+    {
+        return $this->buildConversationMessages();
     }
 }
 
@@ -505,4 +522,137 @@ it('respects priority order in models list', function (): void {
     // Should select openai (priority 2) over google (priority 3)
     expect($selected['provider'])->toBe('openai');
     expect($selected['model'])->toBe('gpt-4o');
+});
+
+// Messages API tests
+
+it('builds system message from yaml system_prompt', function (): void {
+    $prompt = new TestPrompt('Alice');
+
+    $systemMessage = $prompt->testBuildSystemMessage();
+
+    expect($systemMessage)->toBeInstanceOf(SystemMessage::class);
+    expect($systemMessage->content)->toContain('friendly greeting assistant');
+});
+
+it('builds conversation messages as UserMessage', function (): void {
+    $prompt = new TestPrompt('Alice');
+
+    $messages = $prompt->testBuildConversationMessages();
+
+    expect($messages)->toHaveCount(1);
+    expect($messages[0])->toBeInstanceOf(UserMessage::class);
+    expect($messages[0]->content)->toContain('Say hello to Alice');
+});
+
+it('builds complete message array with system and user messages', function (): void {
+    $prompt = new TestPrompt('Alice');
+
+    $messages = $prompt->testBuildMessages();
+
+    // Should have system message + user message
+    expect($messages)->toHaveCount(2);
+    expect($messages[0])->toBeInstanceOf(SystemMessage::class);
+    expect($messages[1])->toBeInstanceOf(UserMessage::class);
+});
+
+it('builds messages without system message when yaml has no system_prompt', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts');
+
+    // test.yaml has no system_prompt field
+    $prompt = new class('Alice') extends Prompt
+    {
+        public function __construct(public readonly string $userName)
+        {
+            parent::__construct();
+        }
+
+        protected function getTemplatePath(): string
+        {
+            return __DIR__.'/../fixtures/prompts/test.yaml';
+        }
+
+        protected function parseResponse(string $responseText): string
+        {
+            return $responseText;
+        }
+
+        public function testBuildMessages(): array
+        {
+            return $this->buildMessages();
+        }
+    };
+
+    $messages = $prompt->testBuildMessages();
+
+    // Should have only user message (no system message)
+    expect($messages)->toHaveCount(1);
+    expect($messages[0])->toBeInstanceOf(UserMessage::class);
+});
+
+it('records messages array when faking', function (): void {
+    $fake = TestPrompt::fake([
+        TextResponseFake::make()->withText('{"message": "Test"}'),
+    ]);
+
+    $prompt = new TestPrompt('Alice');
+    $prompt->executeSync();
+
+    // Verify recorded data contains messages array
+    $recorded = $fake->recorded();
+    expect($recorded)->toHaveCount(1);
+    expect($recorded[0])->toHaveKey('messages');
+    expect($recorded[0]['messages'])->toBeArray();
+    expect($recorded[0]['messages'])->toHaveCount(2); // system + user
+    expect($recorded[0]['messages'][0])->toBeInstanceOf(SystemMessage::class);
+    expect($recorded[0]['messages'][1])->toBeInstanceOf(UserMessage::class);
+
+    TestPrompt::stopFaking();
+});
+
+it('asserts system message contains text when faking', function (): void {
+    $fake = TestPrompt::fake([
+        TextResponseFake::make()->withText('{"message": "Test"}'),
+    ]);
+
+    $prompt = new TestPrompt('Alice');
+    $prompt->executeSync();
+
+    $fake->assertHasSystemMessage();
+    $fake->assertSystemMessageContains('friendly greeting assistant');
+    $fake->assertUserMessageContains('Say hello to Alice');
+    $fake->assertMessageCount(2);
+
+    TestPrompt::stopFaking();
+});
+
+it('asserts prompt contains searches across all messages', function (): void {
+    $fake = TestPrompt::fake([
+        TextResponseFake::make()->withText('{"message": "Test"}'),
+    ]);
+
+    $prompt = new TestPrompt('Alice');
+    $prompt->executeSync();
+
+    // assertPromptContains should find text in any message (system or user)
+    $fake->assertPromptContains('Say hello to Alice');
+    $fake->assertPromptContains('friendly greeting assistant');
+
+    TestPrompt::stopFaking();
+});
+
+it('loads prompt with system_prompt via Prompt::load', function (): void {
+    config()->set('prism-prompt.prompts_path', __DIR__.'/../fixtures/prompts/common');
+
+    $fake = Prompt::fake([
+        TextResponseFake::make()->withText('Hello!'),
+    ]);
+
+    Prompt::load('greeting', ['userName' => 'Alice'])->executeSync();
+
+    $fake->assertHasSystemMessage();
+    $fake->assertSystemMessageContains('friendly greeting assistant');
+    $fake->assertUserMessageContains('Say hello to Alice');
+
+    Prompt::stopFaking();
 });

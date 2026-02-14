@@ -32,6 +32,7 @@ readonly class PromptTemplate
         public string $model,
         public int $maxTokens,
         public float $temperature,
+        public ?string $systemPrompt = null,
     ) {}
 
     /**
@@ -80,6 +81,11 @@ readonly class PromptTemplate
         $temperature = $data['temperature'] ?? config('prism-prompt.default_temperature', 0.7);
         Assert::numeric($temperature);
 
+        $systemPrompt = $data['system_prompt'] ?? null;
+        if ($systemPrompt !== null) {
+            Assert::string($systemPrompt);
+        }
+
         $instance = new static(
             name: $name,
             template: $template,
@@ -88,6 +94,7 @@ readonly class PromptTemplate
             model: $model,
             maxTokens: $maxTokens,
             temperature: (float) $temperature,
+            systemPrompt: $systemPrompt,
         );
 
         // Store in cache

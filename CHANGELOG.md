@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-02-14
+
+### Added
+
+- **Message-based API (`withMessages`)**: Replaced internal `withPrompt()` with `withMessages()` for proper system/user/assistant role separation
+  - `buildMessages()`: Full control over the message array (override for custom structures)
+  - `buildSystemMessage()`: Override to customize the system message
+  - `buildConversationMessages()`: Override to customize user/assistant messages
+  - `renderSystemPrompt()`: Renders the `system_prompt` field from YAML with Blade
+  - `validateMessages()`: Validates message constraints (non-empty, last must be UserMessage, single SystemMessage at position 0)
+- **YAML `system_prompt` field**: New field in YAML templates for system-role content, rendered via Blade with template variables
+- **`PromptTemplate::$systemPrompt`**: New property loaded from YAML `system_prompt` field
+- **New PromptFake assertion methods**:
+  - `assertSystemMessageContains(string $text)`: Assert system message contains text
+  - `assertUserMessageContains(string $text)`: Assert user message contains text
+  - `assertMessageCount(int $expectedCount)`: Assert number of messages
+  - `assertHasSystemMessage()`: Assert a system message exists
+
+### Changed
+
+- **Breaking**: `Prompt::executePrism()` now uses `withMessages()` instead of `withPrompt()`
+- **Breaking**: `PromptFake::record()` now accepts `array $messages` instead of `string $prompt`
+- `assertPromptContains()` now searches across all message contents (backward compatible in usage)
+
 ## [0.5.0] - 2026-02-14
 
 ### Added

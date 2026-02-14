@@ -38,6 +38,10 @@ model: claude-sonnet-4-5-20250929
 max_tokens: 1024
 temperature: 0.7
 
+system_prompt: |
+  You are a friendly greeting assistant.
+  Always respond in JSON format with "message" and "tone" fields.
+
 prompt: |
   Say hello to {{ $userName }}.
 ```
@@ -113,6 +117,76 @@ class HintGenerationPrompt extends Prompt
 
 You can still override `getTemplatePath()` for full path control.
 
+### System Prompt and Message Structure
+
+YAML templates support a `system_prompt` field that is sent as a separate system-role message to the LLM, distinct from the user-role `prompt`. This enables proper role separation for better instruction following.
+
+```yaml
+system_prompt: |
+  You are {{ $npcName }}, a {{ $npcRole }}.
+  Always respond in character.
+
+prompt: |
+  {{ $conversationHistory }}
+
+  User: {{ $userMessage }}
+```
+
+Both `system_prompt` and `prompt` support Blade syntax with the same template variables.
+
+When sent to the LLM via Prism's `withMessages()`, this becomes:
+
+| Role | Content |
+|------|---------|
+| `SystemMessage` | Rendered `system_prompt` |
+| `UserMessage` | Rendered `prompt` |
+
+If `system_prompt` is omitted, only a `UserMessage` is sent (backward compatible).
+
+#### Customizing Message Structure
+
+Override these methods in your `Prompt` subclass for fine-grained control:
+
+```php
+class MyPrompt extends Prompt
+{
+    // Full control over all messages
+    protected function buildMessages(): array
+    {
+        return [
+            new SystemMessage('You are a helpful assistant.'),
+            new UserMessage($previousQuestion),
+            new AssistantMessage($previousAnswer),
+            new UserMessage($this->render()),
+        ];
+    }
+
+    // Or override just the system message
+    protected function buildSystemMessage(): ?SystemMessage
+    {
+        return new SystemMessage('Custom system prompt');
+    }
+
+    // Or override just the conversation messages
+    protected function buildConversationMessages(): array
+    {
+        return [
+            new UserMessage($this->previousQuestion),
+            new AssistantMessage($this->previousAnswer),
+            new UserMessage($this->render()),
+        ];
+    }
+}
+```
+
+**Override hierarchy:**
+
+| Method | Scope | Default behavior |
+|--------|-------|------------------|
+| `buildMessages()` | Full message array | Calls `buildSystemMessage()` + `buildConversationMessages()` |
+| `buildSystemMessage()` | System message only | Renders `system_prompt` from YAML |
+| `buildConversationMessages()` | User/assistant messages | Returns `[new UserMessage($this->render())]` |
+
 ## Runtime API Key Configuration
 
 You can provide a custom API key at runtime using fluent methods:
@@ -134,7 +208,7 @@ $result = (new GreetingPrompt('Alice'))
 
 **Note:** Do not reuse Prompt instances after calling these methods. Use one instance per request.
 
-### Multiple Provider Fallback (Planned Feature)
+### Multiple Provider Fallback
 
 You can configure multiple models with automatic selection based on available API keys.
 
@@ -291,7 +365,11 @@ $result2 = (new GreetingPrompt('Bob'))->executeSync();
 
 // Make assertions
 $fake->assertCallCount(2);
-$fake->assertPromptContains('Alice');
+$fake->assertPromptContains('Alice');         // Searches all messages
+$fake->assertUserMessageContains('Alice');     // User message only
+$fake->assertHasSystemMessage();               // System message exists
+$fake->assertSystemMessageContains('greeting'); // System message content
+$fake->assertMessageCount(2);                  // system + user
 $fake->assertProvider('anthropic');
 $fake->assertModel('claude-sonnet-4-5-20250929');
 
@@ -304,8 +382,12 @@ Prompt::stopFaking();
 | Method | Description |
 |--------|-------------|
 | `assertCallCount(int $count)` | Assert number of prompt executions |
+| `assertPromptContains(string $text)` | Assert any message contains specific text |
+| `assertSystemMessageContains(string $text)` | Assert system message contains specific text |
+| `assertUserMessageContains(string $text)` | Assert user message contains specific text |
+| `assertHasSystemMessage()` | Assert a system message was sent |
+| `assertMessageCount(int $count)` | Assert number of messages sent |
 | `assertPrompt(string $prompt)` | Assert exact prompt text was sent |
-| `assertPromptContains(string $text)` | Assert prompt contains specific text |
 | `assertPromptClass(string $class)` | Assert specific prompt class was used |
 | `assertProvider(string $provider)` | Assert provider was used |
 | `assertModel(string $model)` | Assert model was used |
@@ -411,7 +493,8 @@ class MyService
 | `model` | No | Default model name |
 | `max_tokens` | No | Maximum tokens in response |
 | `temperature` | No | Response randomness (0.0 - 1.0) |
-| `prompt` | Yes | Blade template for the prompt |
+| `system_prompt` | No | Blade template for the system-role message (instructions, role definitions, constraints) |
+| `prompt` | Yes | Blade template for the user-role message (dynamic data, task description) |
 
 ### Multiple Models Support
 
@@ -489,11 +572,14 @@ meta:
       - userRole
       - scenarioTitle
 
-prompt: |
-  ## Context
-  Scenario: {{ $scenarioTitle }}
+# System-role message (instructions, constraints)
+system_prompt: |
+  You are a professional greeter for {{ $scenarioTitle }}.
+  Always respond in JSON format with "message" and "tone" fields.
+  Keep the tone warm and professional.
 
-  ## Task
+# User-role message (dynamic data, task)
+prompt: |
   Generate a greeting for {{ $userName }} ({{ $userRole }}).
 ```
 

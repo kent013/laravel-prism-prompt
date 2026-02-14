@@ -41,3 +41,52 @@ YAML);
     @unlink($tempFile);
     @rmdir($tempDir);
 });
+
+it('loads system_prompt from yaml', function (): void {
+    $path = __DIR__.'/../fixtures/prompts/common/greeting.yaml';
+
+    $template = PromptTemplate::fromYaml($path);
+
+    expect($template->systemPrompt)->not->toBeNull();
+    expect($template->systemPrompt)->toContain('friendly greeting assistant');
+});
+
+it('returns null system_prompt when not specified in yaml', function (): void {
+    $tempDir = sys_get_temp_dir().'/prism-prompt-test';
+    @mkdir($tempDir, 0777, true);
+    $tempFile = $tempDir.'/no-system.yaml';
+
+    file_put_contents($tempFile, <<<'YAML'
+name: no-system
+prompt: "Hello {{ $name }}"
+YAML);
+
+    $template = PromptTemplate::fromYaml($tempFile);
+
+    expect($template->systemPrompt)->toBeNull();
+
+    @unlink($tempFile);
+    @rmdir($tempDir);
+});
+
+it('loads system_prompt with blade syntax from yaml', function (): void {
+    $tempDir = sys_get_temp_dir().'/prism-prompt-test';
+    @mkdir($tempDir, 0777, true);
+    $tempFile = $tempDir.'/with-system.yaml';
+
+    file_put_contents($tempFile, <<<'YAML'
+name: with-system
+system_prompt: |
+  You are {{ $role }}.
+  Be helpful.
+prompt: "Hello {{ $name }}"
+YAML);
+
+    $template = PromptTemplate::fromYaml($tempFile);
+
+    expect($template->systemPrompt)->toContain('You are {{ $role }}');
+    expect($template->systemPrompt)->toContain('Be helpful');
+
+    @unlink($tempFile);
+    @rmdir($tempDir);
+});

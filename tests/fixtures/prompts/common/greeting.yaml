@@ -11,6 +11,10 @@ meta:
       - name: "userName"
         type: "string"
 
+system_prompt: |
+  You are a friendly greeting assistant.
+  Always respond in JSON format with "message" and "tone" fields.
+
 prompt: |
   Say hello to {{ $userName }}.
   Return JSON: {"message": "...", "tone": "..."}
