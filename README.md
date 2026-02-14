@@ -2,6 +2,20 @@
 
 Laravel Mailable-like API for LLM prompts with [Prism](https://github.com/echolabsdev/prism).
 
+LLM プロンプトを **YAML テンプレート + PHP クラス** で構造化し、Laravel の Mailable と同じ感覚で扱えるパッケージです。
+
+### Features
+
+- **YAML-driven prompt management** — プロンプト本文・モデル設定・変数定義を YAML ファイルで一元管理。プロンプトの変更にコードの修正が不要
+- **System / User role separation** — `system_prompt` と `prompt` を YAML 上で分離し、Prism の `withMessages()` で適切なロールとして LLM に送信
+- **Blade templating** — `system_prompt`・`prompt` の両方で Blade 構文 (`{{ $var }}`, `@if` 等) が使用可能
+- **3-level message override** — `buildMessages()` / `buildSystemMessage()` / `buildConversationMessages()` の 3 段階でメッセージ構成をカスタマイズ。会話履歴の注入やマルチターン対話に対応
+- **Structured response parsing** — `parseResponse()` + `extractJson()` で LLM のテキスト応答を DTO に自動変換
+- **Multiple provider fallback** — YAML の `models` リストと `withApiKeys()` で、利用可能な API キーに基づくプロバイダ自動選択
+- **Mailable-like testing** — `Prompt::fake()` で LLM 呼び出しをモック化。`assertSystemMessageContains()` / `assertUserMessageContains()` 等でメッセージ内容を個別検証
+- **Embedding support** — `EmbeddingPrompt` で `Prism::embeddings()` によるベクトル生成にも対応
+- **Performance logging** — 実行時間・トークン使用量のログ出力、デバッグファイル保存
+
 ## Installation
 
 ```bash
