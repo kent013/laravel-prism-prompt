@@ -602,6 +602,17 @@ prompt: |
 | `debug.save_files` | `false` | Save prompt/response/metadata files to disk |
 | `debug.storage_path` | `storage_path('prism-prompt-debug')` | Directory for debug files |
 
+## Examples
+
+The [`examples/`](examples/) directory contains runnable samples for common use cases:
+
+| File | Description |
+|------|-------------|
+| [01-basic-system-prompt.php](examples/01-basic-system-prompt.php) | `Prompt::load()` with `system_prompt` — simplest pattern, no PHP class needed |
+| [02-json-dto-response.php](examples/02-json-dto-response.php) | Subclass with `extractJson()` → DTO mapping, JSON schema in `system_prompt` |
+| [03-conversation-history.php](examples/03-conversation-history.php) | Override `buildConversationMessages()` to send chat history as native `UserMessage`/`AssistantMessage` |
+| [04-testing.php](examples/04-testing.php) | Testing patterns with message-aware assertions (`assertSystemMessageContains`, `assertUserMessageContains`, etc.) |
+
 ## License
 
 MIT
