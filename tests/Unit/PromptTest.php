@@ -65,7 +65,7 @@ class TestPrompt extends Prompt
         return $this->buildMessages();
     }
 
-    public function testBuildSystemMessage(): ?\Prism\Prism\ValueObjects\Messages\SystemMessage
+    public function testBuildSystemMessage(): ?SystemMessage
     {
         return $this->buildSystemMessage();
     }
@@ -655,4 +655,158 @@ it('loads prompt with system_prompt via Prompt::load', function (): void {
     $fake->assertUserMessageContains('Say hello to Alice');
 
     Prompt::stopFaking();
+});
+
+// ProviderTools, maxSteps, clientOptions support tests
+
+use Prism\Prism\ValueObjects\ProviderTool;
+
+class FeaturesPrompt extends Prompt
+{
+    public function __construct(
+        public readonly string $topic,
+    ) {
+        parent::__construct();
+    }
+
+    protected function getTemplatePath(): string
+    {
+        return __DIR__.'/../fixtures/prompts/common/with-features.yaml';
+    }
+
+    protected function parseResponse(string $responseText): string
+    {
+        return $responseText;
+    }
+
+    /** @return array<int, ProviderTool> */
+    public function testResolveProviderTools(): array
+    {
+        return $this->resolveProviderTools();
+    }
+
+    public function testResolveMaxSteps(): ?int
+    {
+        return $this->resolveMaxSteps();
+    }
+
+    /** @return array<string, mixed> */
+    public function testResolveClientOptions(): array
+    {
+        return $this->resolveClientOptions();
+    }
+}
+
+it('resolves provider tools from yaml', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+
+    $tools = $prompt->testResolveProviderTools();
+
+    expect($tools)->toHaveCount(1);
+    expect($tools[0])->toBeInstanceOf(ProviderTool::class);
+    expect($tools[0]->type)->toBe('web_search_20250305');
+    expect($tools[0]->name)->toBe('web_search');
+});
+
+it('resolves max steps from yaml', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+
+    expect($prompt->testResolveMaxSteps())->toBe(5);
+});
+
+it('resolves client options from yaml', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+
+    expect($prompt->testResolveClientOptions())->toBe(['timeout' => 300]);
+});
+
+it('class property overrides yaml for provider tools', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+    $customTool = new ProviderTool('custom_tool', 'custom');
+    $prompt->withProviderTools([$customTool]);
+
+    $tools = $prompt->testResolveProviderTools();
+
+    expect($tools)->toHaveCount(1);
+    expect($tools[0]->type)->toBe('custom_tool');
+});
+
+it('class property overrides yaml for max steps', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+    $prompt->withMaxSteps(20);
+
+    expect($prompt->testResolveMaxSteps())->toBe(20);
+});
+
+it('class property overrides yaml for client options', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+    $prompt->withClientOptions(['timeout' => 600]);
+
+    expect($prompt->testResolveClientOptions())->toBe(['timeout' => 600]);
+});
+
+it('returns null for max steps when not set', function (): void {
+    $prompt = new TestPrompt('Alice');
+
+    // greeting.yaml has no max_steps
+    $reflection = new ReflectionMethod($prompt, 'resolveMaxSteps');
+    $reflection->setAccessible(true);
+
+    expect($reflection->invoke($prompt))->toBeNull();
+});
+
+it('returns empty array for provider tools when not set', function (): void {
+    $prompt = new TestPrompt('Alice');
+
+    // greeting.yaml has no provider_tools
+    $reflection = new ReflectionMethod($prompt, 'resolveProviderTools');
+    $reflection->setAccessible(true);
+
+    expect($reflection->invoke($prompt))->toBe([]);
+});
+
+it('returns empty array for client options when not set', function (): void {
+    $prompt = new TestPrompt('Alice');
+
+    // greeting.yaml has no client_options
+    $reflection = new ReflectionMethod($prompt, 'resolveClientOptions');
+    $reflection->setAccessible(true);
+
+    expect($reflection->invoke($prompt))->toBe([]);
+});
+
+it('withProviderTools returns fluent instance', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+    $result = $prompt->withProviderTools([new ProviderTool('test')]);
+
+    expect($result)->toBe($prompt);
+});
+
+it('withMaxSteps returns fluent instance', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+    $result = $prompt->withMaxSteps(10);
+
+    expect($result)->toBe($prompt);
+});
+
+it('withClientOptions returns fluent instance', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+    $result = $prompt->withClientOptions(['timeout' => 60]);
+
+    expect($result)->toBe($prompt);
+});
+
+it('separates system message from withMessages for Anthropic compatibility', function (): void {
+    $fake = TestPrompt::fake([
+        TextResponseFake::make()->withText('{"message": "Test"}'),
+    ]);
+
+    $prompt = new TestPrompt('Alice');
+    $prompt->executeSync();
+
+    // System message should still be recorded in the messages array
+    $fake->assertHasSystemMessage();
+    $fake->assertSystemMessageContains('friendly greeting assistant');
+
+    TestPrompt::stopFaking();
 });

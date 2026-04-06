@@ -19,6 +19,7 @@ use Prism\Prism\Text\Response as TextResponse;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
+use Prism\Prism\ValueObjects\ProviderTool;
 use React\Promise\PromiseInterface;
 use RuntimeException;
 use Webmozart\Assert\Assert;
@@ -47,6 +48,14 @@ abstract class Prompt implements PromptInterface
 
     protected ?float $temperature = null;
 
+    /** @var array<int, ProviderTool> */
+    protected array $providerTools = [];
+
+    protected ?int $maxSteps = null;
+
+    /** @var array<string, mixed> */
+    protected array $clientOptions = [];
+
     /** @var array<string, mixed> */
     protected array $templateVariables = [];
 
@@ -59,6 +68,7 @@ abstract class Prompt implements PromptInterface
      * Create a TextPrompt instance from YAML template name
      *
      * @param  array<string, mixed>  $variables
+     *
      * @return TextPrompt
      */
     public static function load(string $name, array $variables = []): self
@@ -108,6 +118,40 @@ abstract class Prompt implements PromptInterface
     public static function stopFaking(): void
     {
         static::$fake = null;
+    }
+
+    /**
+     * Set provider tools (e.g. web_search)
+     *
+     * @param  array<int, ProviderTool>  $providerTools
+     */
+    public function withProviderTools(array $providerTools): static
+    {
+        $this->providerTools = $providerTools;
+
+        return $this;
+    }
+
+    /**
+     * Set max steps for multi-step tool use
+     */
+    public function withMaxSteps(int $maxSteps): static
+    {
+        $this->maxSteps = $maxSteps;
+
+        return $this;
+    }
+
+    /**
+     * Set client options (e.g. timeout)
+     *
+     * @param  array<string, mixed>  $options
+     */
+    public function withClientOptions(array $options): static
+    {
+        $this->clientOptions = $options;
+
+        return $this;
     }
 
     /**
@@ -319,11 +363,45 @@ abstract class Prompt implements PromptInterface
         $executionId = $logger?->startExecution(static::class, $provider, $model, $promptForLog);
         $startTime = microtime(true);
 
-        $result = Prism::text()
+        // Separate SystemMessage for Anthropic compatibility
+        $systemPrompt = null;
+        $nonSystemMessages = [];
+        foreach ($messages as $message) {
+            if ($message instanceof SystemMessage) {
+                $systemPrompt = $message->content;
+            } else {
+                $nonSystemMessages[] = $message;
+            }
+        }
+
+        $builder = Prism::text()
             ->using($provider, $model, $config)
-            ->withMessages($messages)
-            ->withMaxTokens($this->resolveMaxTokens())
-            ->asText();
+            ->withMaxTokens($this->resolveMaxTokens());
+
+        if ($systemPrompt !== null) {
+            $builder->withSystemPrompt($systemPrompt);
+        }
+
+        if ($nonSystemMessages !== []) {
+            $builder->withMessages($nonSystemMessages);
+        }
+
+        $resolvedProviderTools = $this->resolveProviderTools();
+        if ($resolvedProviderTools !== []) {
+            $builder->withProviderTools($resolvedProviderTools);
+        }
+
+        $resolvedMaxSteps = $this->resolveMaxSteps();
+        if ($resolvedMaxSteps !== null) {
+            $builder->withMaxSteps($resolvedMaxSteps);
+        }
+
+        $resolvedClientOptions = $this->resolveClientOptions();
+        if ($resolvedClientOptions !== []) {
+            $builder->withClientOptions($resolvedClientOptions);
+        }
+
+        $result = $builder->asText();
 
         Assert::isInstanceOf($result, TextResponse::class);
 
@@ -393,6 +471,74 @@ abstract class Prompt implements PromptInterface
         Assert::numeric($configTemperature);
 
         return (float) $configTemperature;
+    }
+
+    /**
+     * Resolve provider tools (class property > YAML > empty)
+     *
+     * @return array<int, ProviderTool>
+     */
+    protected function resolveProviderTools(): array
+    {
+        if ($this->providerTools !== []) {
+            return $this->providerTools;
+        }
+
+        $yamlTools = $this->metadata['provider_tools'] ?? null;
+        if (! is_array($yamlTools)) {
+            return [];
+        }
+
+        $tools = [];
+        foreach ($yamlTools as $tool) {
+            if (! is_array($tool) || ! isset($tool['type'])) {
+                continue;
+            }
+            Assert::string($tool['type']);
+            $name = isset($tool['name']) && is_string($tool['name']) ? $tool['name'] : null;
+            /** @var array<string, mixed> $options */
+            $options = isset($tool['options']) && is_array($tool['options']) ? $tool['options'] : [];
+            $tools[] = new ProviderTool($tool['type'], $name, $options);
+        }
+
+        return $tools;
+    }
+
+    /**
+     * Resolve max steps (class property > YAML > null)
+     */
+    protected function resolveMaxSteps(): ?int
+    {
+        if ($this->maxSteps !== null) {
+            return $this->maxSteps;
+        }
+
+        $yamlMaxSteps = $this->metadata['max_steps'] ?? null;
+        if (is_int($yamlMaxSteps)) {
+            return $yamlMaxSteps;
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve client options (class property > YAML > empty)
+     *
+     * @return array<string, mixed>
+     */
+    protected function resolveClientOptions(): array
+    {
+        if ($this->clientOptions !== []) {
+            return $this->clientOptions;
+        }
+
+        $yamlOptions = $this->metadata['client_options'] ?? null;
+        if (is_array($yamlOptions)) {
+            /** @var array<string, mixed> $yamlOptions */
+            return $yamlOptions;
+        }
+
+        return [];
     }
 
     /**

@@ -1,0 +1,18 @@
+name: with-features
+provider: anthropic
+model: claude-sonnet-4-5-20250929
+max_tokens: 2048
+max_steps: 5
+
+provider_tools:
+  - type: "web_search_20250305"
+    name: "web_search"
+
+client_options:
+  timeout: 300
+
+system_prompt: |
+  You are a research assistant.
+
+prompt: |
+  Research {{ $topic }}.
