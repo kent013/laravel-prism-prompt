@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-04-14
+
+### Changed
+
+- Documentation-only release. No code changes.
+- **README rewrite** for v0.7 / v0.8 surface:
+  - Features list: added event-driven hooks, `withMetadata()`, built-in USD cost calculation, and listener-based debug logging.
+  - New **"Events & Metadata"** section documenting `PromptExecutionCompleted` / `PromptExecutionFailed` payloads and `withMetadata()` merge behavior.
+  - New **"USD Cost Calculation"** section covering the pricing table, snapshot audit trail, `cost === null` vs `unknown_model:...` zero-cost snapshot distinction, and the deliberate out-of-scope status of FX conversion and persistence.
+  - Rewrote **"Debug Logging"** to describe the listener-based architecture (`PerformanceLogListener`, `PerformanceDebugFileListener`) instead of the in-line logger removed in v0.7.
+  - Removed the stale **"Custom Logger"** subsection whose `getPerformanceLogger()` override hook no longer exists on `Prompt`. Added a note that `EmbeddingPrompt` still uses the `PerformanceLoggerInterface` contract.
+  - **Configuration Reference** split into `config/prism-prompt.php` and `config/prism-prompt-pricing.php` tables, plus a second `vendor:publish` command for the pricing tag.
+- **New example**: [`examples/05-events-and-cost.php`](examples/05-events-and-cost.php) — subscribing to events, attaching caller-side metadata, reading `CostCalculation`, and handling the `cost === null` failure path vs the `unknown_model:...` zero-cost snapshot.
+
 ## [0.8.0] - 2026-04-14
 
 ### Added

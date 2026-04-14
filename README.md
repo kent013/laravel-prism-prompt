@@ -12,9 +12,12 @@ Structure your LLM prompts with **YAML templates + PHP classes**, just like Lara
 - **3-level message override** — Customize message structure at three levels: `buildMessages()` / `buildSystemMessage()` / `buildConversationMessages()`. Supports conversation history injection and multi-turn dialogue
 - **Structured response parsing** — Convert LLM text responses to DTOs via `parseResponse()` + `extractJson()`
 - **Multiple provider fallback** — Automatic provider selection based on available API keys using YAML `models` list and `withApiKeys()`
+- **Event-driven observability** — Every call dispatches `PromptExecutionCompleted` / `PromptExecutionFailed`, carrying usage, duration, and the pre-computed `CostCalculation`. Hook in from any app service without subclassing
+- **Caller-side metadata** — `withMetadata(['organization_id' => 42, 'subject_id' => 1, ...])` flows into events so observers can attribute cost/usage to your own domain objects
+- **Built-in USD cost calculation** — Per-model prices resolved from a publishable config; cost scalars + `PricingSnapshot` are attached to every success event (FX conversion stays in your app)
 - **Mailable-like testing** — Mock LLM calls with `Prompt::fake()`. Verify message contents with `assertSystemMessageContains()` / `assertUserMessageContains()` and more
 - **Embedding support** — Vector generation via `EmbeddingPrompt` using `Prism::embeddings()`
-- **Performance logging** — Log execution time and token usage, with optional debug file output
+- **Listener-based debug logging** — Opt-in `PerformanceLogListener` + `PerformanceDebugFileListener` log execution time / tokens and optionally save prompt/response/metadata files. Enabled via config only — no code changes needed
 
 ## Installation
 
@@ -24,11 +27,17 @@ composer require kent013/laravel-prism-prompt
 
 ## Configuration
 
-Publish the config file:
+Publish the config files:
 
 ```bash
+# Core package config (provider defaults, cache, debug)
 php artisan vendor:publish --tag=prism-prompt-config
+
+# Pricing table (per-model USD rates, for cost calculation)
+php artisan vendor:publish --tag=prism-prompt-pricing
 ```
+
+Override the pricing table in `config/prism-prompt-pricing.php` when new models ship or vendor prices change. Every `CostCalculation` carries an immutable `PricingSnapshot` (including a `source` string you control via `PRISM_PROMPT_PRICING_SOURCE`) so historical records stay auditable after the table is updated.
 
 ### Settings Priority
 
@@ -415,9 +424,121 @@ TextResponseFake::make()
     ->withUsage(100, 50);  // promptTokens, completionTokens
 ```
 
-## Debug Logging
+## Events & Metadata
 
-Enable performance logging for debugging LLM calls:
+Every successful `Prompt::executeSync()` dispatches a **`PromptExecutionCompleted`** event; every failure dispatches **`PromptExecutionFailed`**. Subscribe from anywhere in your app to record cost, usage, or audit trails — no subclassing required.
+
+```php
+use Kent013\PrismPrompt\Events\PromptExecutionCompleted;
+use Kent013\PrismPrompt\Events\PromptExecutionFailed;
+
+Event::listen(PromptExecutionCompleted::class, function (PromptExecutionCompleted $event): void {
+    // $event->executionId      — UUID for this call
+    // $event->promptClass      — e.g. App\Prompts\GreetingPrompt
+    // $event->promptTemplate   — basename of the YAML template, or null
+    // $event->provider         — 'anthropic' / 'openai' / ...
+    // $event->model            — resolved model id
+    // $event->finishReason     — Prism\Prism\Enums\FinishReason
+    // $event->stepCount        — number of Prism steps
+    // $event->totalUsage       — Prism\Prism\ValueObjects\Usage
+    // $event->durationMs       — float
+    // $event->requestId        — provider request id, or null
+    // $event->response         — Prism\Prism\Text\Response
+    // $event->metadata         — array<string, mixed> from withMetadata()
+    // $event->cost             — ?CostCalculation (see "USD Cost Calculation")
+});
+
+Event::listen(PromptExecutionFailed::class, function (PromptExecutionFailed $event): void {
+    // Same context minus response/cost/totalUsage; adds $event->exception.
+    // Failed calls may still have incurred API cost — decide your own policy.
+});
+```
+
+### Caller-side context with `withMetadata()`
+
+When your listener needs to attribute a call to your own domain objects (tenant, user, subject), attach that context at the call site:
+
+```php
+$result = (new GreetingPrompt('Alice'))
+    ->withMetadata([
+        'organization_id' => $orgId,
+        'subject_type' => App\Models\Evaluation::class,
+        'subject_id' => $evaluation->id,
+    ])
+    ->executeSync();
+```
+
+`withMetadata()` merges on repeat calls. The array is delivered verbatim through `$event->metadata` — it is never interpreted by the package, so you are free to put whatever keys your listener needs.
+
+Event dispatch is wrapped in a try/catch: a buggy listener will be logged but will **never** propagate back into the LLM call site.
+
+## USD Cost Calculation
+
+`PromptExecutionCompleted::$cost` is populated from `config/prism-prompt-pricing.php` before the event is dispatched. You get per-token USD scalars plus an immutable `PricingSnapshot` ready to persist as JSON.
+
+```php
+use Kent013\PrismPrompt\Events\PromptExecutionCompleted;
+
+Event::listen(PromptExecutionCompleted::class, function (PromptExecutionCompleted $event): void {
+    $cost = $event->cost;
+    if ($cost === null) {
+        // Pricing resolution threw unexpectedly — treat as an alert, not a normal case.
+        return;
+    }
+
+    $cost->inputCostUsd;       // float
+    $cost->outputCostUsd;      // float
+    $cost->cacheWriteCostUsd;  // ?float (null when the model has no cache pricing)
+    $cost->cacheReadCostUsd;   // ?float
+    $cost->totalCostUsd;       // float
+
+    // Snapshot is Arrayable — drop it straight into a JSON column.
+    $snapshotJson = $cost->snapshot->toArray();
+    // PricingSnapshot::fromArray() restores it on read.
+});
+```
+
+### Pricing table
+
+`config/prism-prompt-pricing.php` (publishable) ships with current Anthropic Claude models. Extend it with any provider/model combo you call:
+
+```php
+return [
+    'pricing_source' => env('PRISM_PROMPT_PRICING_SOURCE', 'vendor_YYYY-MM-DD'),
+    'unknown_model_behavior' => env('PRISM_PROMPT_UNKNOWN_MODEL_BEHAVIOR', 'zero'),
+    'models' => [
+        'anthropic' => [
+            'claude-sonnet-4-6' => ['input' => 3.00, 'output' => 15.00, 'cache_write' => 3.75, 'cache_read' => 0.30],
+            // ...
+        ],
+    ],
+];
+```
+
+| Key | Description |
+|-----|-------------|
+| `pricing_source` | String embedded into every `PricingSnapshot`. Bump this when you update rates so old records stay auditable |
+| `unknown_model_behavior` | `'zero'` (default) returns a zero-cost snapshot with a throttled `Log::warning` + `source='unknown_model:...'`. `'throw'` raises `InvalidArgumentException` instead |
+| `models.{provider}.{model}` | Per-million-token rates: `input`, `output`, optional `cache_write`, optional `cache_read` |
+
+**Billing notes:**
+
+- Reasoning / `thought` tokens (from models like Claude 4.5 extended thinking) are billed at the `output` rate.
+- Cache costs are only applied when both the usage value and the rate are non-null; otherwise they stay `null` on the result.
+- **Non-USD currency conversion and database persistence are deliberately out of scope** for this package. Handle FX and storage in your app's event listener — see [`docs/contributing.md`](https://github.com/kent013/ux-insights/blob/main/docs/contributing.md) in the reference consumer for one working pattern.
+
+### `cost === null` vs zero-cost snapshots
+
+Two shapes look similar but mean different things:
+
+| Result | Meaning | Treat as |
+|--------|---------|----------|
+| `cost === null` | Pricing resolution threw unexpectedly (misconfigured service, bug) | **Alert-worthy** — something is wrong upstream |
+| `cost !== null && cost->totalCostUsd === 0.0 && snapshot.source === 'unknown_model:...'` | Model isn't in the pricing table, fell back to zero per `unknown_model_behavior = zero` | Normal operation — expected for new models before you update the table |
+
+## Debug Logging (listener-based)
+
+Enable execution logging without writing any listeners yourself:
 
 ```env
 PRISM_PROMPT_DEBUG=true
@@ -425,33 +546,16 @@ PRISM_PROMPT_LOG_CHANNEL=prism-prompt
 PRISM_PROMPT_SAVE_FILES=true
 ```
 
-When enabled, logs include:
-- Execution ID
-- Prompt class
-- Provider and model
-- Duration (ms)
-- Token usage (prompt/completion/total)
+When `debug.enabled` is on, the service provider auto-registers **`PerformanceLogListener`** on `PromptExecutionCompleted` and emits a JSON line per call containing execution id, prompt class/template, provider/model, duration, token counts, and step count.
 
-When `save_files` is enabled, debug files are saved to `storage/prism-prompt-debug/{date}/{execution-id}/`:
-- `prompt.txt` - The rendered prompt
-- `response.txt` - The LLM response
-- `metadata.json` - Execution metadata
+When `debug.save_files` is on, **`PerformanceDebugFileListener`** additionally writes files to `storage/prism-prompt-debug/{date}/{execution-id}/`:
 
-### Custom Logger
+- `response.txt` — the raw LLM response text
+- `metadata.json` — structured metadata (same fields as the log line)
 
-You can provide a custom logger by extending `Prompt` and overriding `getPerformanceLogger()`:
+Both listeners are plain classes you can swap out by calling `Event::forget(PromptExecutionCompleted::class)` and registering your own — the package never forces you to use them.
 
-```php
-use Kent013\PrismPrompt\Contracts\PerformanceLoggerInterface;
-
-class MyPrompt extends Prompt
-{
-    protected function getPerformanceLogger(): ?PerformanceLoggerInterface
-    {
-        return app(MyCustomLogger::class);
-    }
-}
-```
+> **Note:** `EmbeddingPrompt` has not been migrated to the event-driven architecture yet. It still uses the internal `PerformanceLogger` (and the `PerformanceLoggerInterface` contract) when `debug.enabled` is on. This is a legacy surface that will move to events in a future release.
 
 ## Response Parsing
 
@@ -599,6 +703,8 @@ prompt: |
 
 ## Configuration Reference
 
+### `config/prism-prompt.php`
+
 | Key | Default | Description |
 |-----|---------|-------------|
 | `default_provider` | `anthropic` | Default LLM provider for text generation |
@@ -611,10 +717,18 @@ prompt: |
 | `cache.enabled` | `true` | Enable YAML template caching |
 | `cache.ttl` | `3600` | Cache TTL in seconds |
 | `cache.store` | `null` | Cache store (null = default) |
-| `debug.enabled` | `false` | Enable performance logging |
-| `debug.log_channel` | `prism-prompt` | Log channel for performance logs |
-| `debug.save_files` | `false` | Save prompt/response/metadata files to disk |
+| `debug.enabled` | `false` | Auto-register `PerformanceLogListener` to log each call |
+| `debug.log_channel` | `prism-prompt` | Log channel the listener writes to |
+| `debug.save_files` | `false` | Auto-register `PerformanceDebugFileListener` to persist response.txt / metadata.json |
 | `debug.storage_path` | `storage_path('prism-prompt-debug')` | Directory for debug files |
+
+### `config/prism-prompt-pricing.php`
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `pricing_source` | `defaults_shipped` | Label embedded in every `PricingSnapshot`. Override via `PRISM_PROMPT_PRICING_SOURCE` |
+| `unknown_model_behavior` | `zero` | `zero` returns a zero-cost snapshot; `throw` raises `InvalidArgumentException` |
+| `models.{provider}.{model}` | Anthropic Claude set | Per-million-token rates: `input`, `output`, optional `cache_write` / `cache_read` |
 
 ## Examples
 
@@ -626,6 +740,7 @@ The [`examples/`](examples/) directory contains runnable samples for common use 
 | [02-json-dto-response.php](examples/02-json-dto-response.php) | Subclass with `extractJson()` → DTO mapping, JSON schema in `system_prompt` |
 | [03-conversation-history.php](examples/03-conversation-history.php) | Override `buildConversationMessages()` to send chat history as native `UserMessage`/`AssistantMessage` |
 | [04-testing.php](examples/04-testing.php) | Testing patterns with message-aware assertions (`assertSystemMessageContains`, `assertUserMessageContains`, etc.) |
+| [05-events-and-cost.php](examples/05-events-and-cost.php) | Subscribing to `PromptExecutionCompleted` / `PromptExecutionFailed`, attaching `withMetadata()`, and reading `CostCalculation` |
 
 ## License
 
