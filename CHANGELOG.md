@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-04-14
+
+### Added
+
+- **Event-driven execution hooks**: `Prompt::executeSync()` now dispatches Laravel events so that callers (apps, other packages) can hook into successful completions and failures without subclassing.
+  - `PromptExecutionCompleted` — carries `executionId`, `promptClass`, `promptTemplate`, `provider`, `model`, `finishReason`, `stepCount`, `totalUsage`, `durationMs`, `requestId`, `response`, and caller-supplied `metadata`.
+  - `PromptExecutionFailed` — carries the failing `exception` plus timing/provider info. Failed calls may still have incurred API cost, so observers can still record them.
+- **`Prompt::withMetadata(array $metadata)`**: Attach arbitrary caller context (e.g. `evaluation_id`, `persona_id`) that flows through into both events. Multiple calls merge.
+- **Listener-based debug logging**: `PerformanceLogListener` and `PerformanceDebugFileListener` replace the in-line `PerformanceLogger` calls previously embedded in `Prompt::executeSync()`. They are auto-wired when `prism-prompt.debug.enabled` / `prism-prompt.debug.save_files` are on — behavior is unchanged for existing users.
+
+### Changed
+
+- `Prompt::executeSync()` no longer calls `PerformanceLogger` directly; logging happens via `PromptExecutionCompleted` → `PerformanceLogListener`. Debug-file output moves to `PerformanceDebugFileListener`. No user-visible config changes.
+- Event dispatch and listener errors are caught and logged (not re-thrown), so logging failures cannot break user-facing LLM calls.
+
+### Notes
+
+- `PerformanceLogger` and `PerformanceLoggerInterface` are retained for `EmbeddingPrompt`, which has **not** been migrated to events in this release. Its behavior is unchanged.
+
 ## [0.6.0] - 2026-02-14
 
 ### Added

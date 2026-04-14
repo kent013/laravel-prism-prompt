@@ -6,9 +6,12 @@ namespace Kent013\PrismPrompt;
 
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use JsonException;
 use Kent013\PrismPrompt\Contracts\PromptInterface;
+use Kent013\PrismPrompt\Events\PromptExecutionCompleted;
+use Kent013\PrismPrompt\Events\PromptExecutionFailed;
 use Kent013\PrismPrompt\Exceptions\InvalidJsonResponseException;
 use Kent013\PrismPrompt\Testing\PromptFake;
 use Kent013\PrismPrompt\Testing\TextResponseFake;
@@ -16,12 +19,12 @@ use Kent013\PrismPrompt\Traits\ResolvesProviderConfig;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Text\Response as TextResponse;
-use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\ProviderTool;
 use React\Promise\PromiseInterface;
 use RuntimeException;
+use Throwable;
 use Webmozart\Assert\Assert;
 
 use function React\Async\async;
@@ -59,6 +62,9 @@ abstract class Prompt implements PromptInterface
     /** @var array<string, mixed> */
     protected array $templateVariables = [];
 
+    /** @var array<string, mixed> */
+    protected array $metadata_context = [];
+
     public function __construct()
     {
         $this->loadMetadata();
@@ -68,6 +74,7 @@ abstract class Prompt implements PromptInterface
      * Create a TextPrompt instance from YAML template name
      *
      * @param  array<string, mixed>  $variables
+     *
      * @return TextPrompt
      */
     public static function load(string $name, array $variables = []): self
@@ -149,6 +156,18 @@ abstract class Prompt implements PromptInterface
     public function withClientOptions(array $options): static
     {
         $this->clientOptions = $options;
+
+        return $this;
+    }
+
+    /**
+     * Attach caller-side context metadata that flows through to events.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public function withMetadata(array $metadata): static
+    {
+        $this->metadata_context = array_merge($this->metadata_context, $metadata);
 
         return $this;
     }
@@ -339,6 +358,20 @@ abstract class Prompt implements PromptInterface
     }
 
     /**
+     * Extract prompt template name from templatePath.
+     */
+    private function extractPromptTemplate(): ?string
+    {
+        if ($this->templatePath === '') {
+            return null;
+        }
+
+        $basename = basename($this->templatePath, '.yaml');
+
+        return $basename === '' ? null : $basename;
+    }
+
+    /**
      * Execute Prism LLM call
      */
     protected function executePrism(): string
@@ -357,9 +390,7 @@ abstract class Prompt implements PromptInterface
             return $fakeResponse->getText();
         }
 
-        $logger = $this->getPerformanceLogger();
-        $promptForLog = $this->messagesToString($messages);
-        $executionId = $logger?->startExecution(static::class, $provider, $model, $promptForLog);
+        $executionId = (string) Str::uuid();
         $startTime = microtime(true);
 
         // Separate SystemMessage for Anthropic compatibility
@@ -400,36 +431,59 @@ abstract class Prompt implements PromptInterface
             $builder->withClientOptions($resolvedClientOptions);
         }
 
-        $result = $builder->asText();
+        try {
+            $result = $builder->asText();
+            Assert::isInstanceOf($result, TextResponse::class);
 
-        Assert::isInstanceOf($result, TextResponse::class);
-
-        if ($logger && $executionId) {
             $durationMs = (microtime(true) - $startTime) * 1000;
-            $logger->completeExecution(
-                $executionId,
-                $result->text,
-                $durationMs,
-                $result->usage->promptTokens,
-                $result->usage->completionTokens
-            );
+
+            try {
+                event(new PromptExecutionCompleted(
+                    executionId: $executionId,
+                    promptClass: static::class,
+                    promptTemplate: $this->extractPromptTemplate(),
+                    provider: $provider,
+                    model: $model,
+                    finishReason: $result->finishReason,
+                    stepCount: $result->steps->count(),
+                    totalUsage: $result->usage,
+                    durationMs: $durationMs,
+                    requestId: $result->meta->id ?? null,
+                    response: $result,
+                    metadata: $this->metadata_context,
+                ));
+            } catch (Throwable $eventError) {
+                Log::error('Failed to dispatch PromptExecutionCompleted event', [
+                    'execution_id' => $executionId,
+                    'error' => $eventError->getMessage(),
+                ]);
+            }
+
+            return $result->text;
+        } catch (Throwable $e) {
+            $durationMs = (microtime(true) - $startTime) * 1000;
+
+            try {
+                event(new PromptExecutionFailed(
+                    executionId: $executionId,
+                    promptClass: static::class,
+                    promptTemplate: $this->extractPromptTemplate(),
+                    provider: $provider,
+                    model: $model,
+                    durationMs: $durationMs,
+                    exception: $e,
+                    metadata: $this->metadata_context,
+                ));
+            } catch (Throwable $eventError) {
+                Log::error('Failed to dispatch PromptExecutionFailed event', [
+                    'execution_id' => $executionId,
+                    'original_error' => $e->getMessage(),
+                    'dispatch_error' => $eventError->getMessage(),
+                ]);
+            }
+
+            throw $e;
         }
-
-        return $result->text;
-    }
-
-    /**
-     * Get the performance logger instance
-     */
-    protected function getPerformanceLogger(): ?Contracts\PerformanceLoggerInterface
-    {
-        if (! app()->bound(PerformanceLogger::class)) {
-            return null;
-        }
-
-        $logger = app(PerformanceLogger::class);
-
-        return $logger->isEnabled() ? $logger : null;
     }
 
     /**
@@ -538,28 +592,5 @@ abstract class Prompt implements PromptInterface
         }
 
         return [];
-    }
-
-    /**
-     * Convert message array to string for logging
-     *
-     * @param  array<int, Message>  $messages
-     */
-    private function messagesToString(array $messages): string
-    {
-        $parts = [];
-        foreach ($messages as $msg) {
-            $role = match (true) {
-                $msg instanceof SystemMessage => 'system',
-                $msg instanceof UserMessage => 'user',
-                $msg instanceof AssistantMessage => 'assistant',
-                default => 'unknown',
-            };
-            $content = $msg->content;
-            $truncated = mb_substr($content, 0, 200);
-            $parts[] = "[{$role}] {$truncated}".(mb_strlen($content) > 200 ? '...' : '');
-        }
-
-        return implode("\n", $parts);
     }
 }

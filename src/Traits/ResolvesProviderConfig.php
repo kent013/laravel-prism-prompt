@@ -260,6 +260,7 @@ trait ResolvesProviderConfig
      * Select provider from models list based on available API keys
      *
      * @param  array<int, array<string, mixed>>  $models
+     *
      * @return array{provider: string, model: string, config: array<string, mixed>}
      */
     private function selectFromModels(array $models): array
