@@ -9,6 +9,7 @@ use Illuminate\Support\ServiceProvider;
 use Kent013\PrismPrompt\Events\PromptExecutionCompleted;
 use Kent013\PrismPrompt\Listeners\PerformanceDebugFileListener;
 use Kent013\PrismPrompt\Listeners\PerformanceLogListener;
+use Kent013\PrismPrompt\Pricing\LlmPricingService;
 
 class PromptServiceProvider extends ServiceProvider
 {
@@ -19,8 +20,17 @@ class PromptServiceProvider extends ServiceProvider
             'prism-prompt'
         );
 
+        $this->mergeConfigFrom(
+            __DIR__.'/../config/prism-prompt-pricing.php',
+            'prism-prompt-pricing'
+        );
+
         $this->app->singleton(PerformanceLogger::class, function () {
             return new PerformanceLogger;
+        });
+
+        $this->app->singleton(LlmPricingService::class, function () {
+            return new LlmPricingService;
         });
     }
 
@@ -30,6 +40,10 @@ class PromptServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../config/prism-prompt.php' => config_path('prism-prompt.php'),
             ], 'prism-prompt-config');
+
+            $this->publishes([
+                __DIR__.'/../config/prism-prompt-pricing.php' => config_path('prism-prompt-pricing.php'),
+            ], 'prism-prompt-pricing');
         }
 
         if (config('prism-prompt.debug.enabled')) {

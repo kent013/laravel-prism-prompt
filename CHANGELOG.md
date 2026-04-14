@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-04-14
+
+### Added
+
+- **Built-in USD cost calculation**: `PromptExecutionCompleted` now carries a `cost: ?CostCalculation` field populated automatically from the configured pricing table. Consumers no longer need to re-implement per-model pricing.
+- **`Kent013\PrismPrompt\Pricing\LlmPricingService`**: Resolves per-model prices from `config/prism-prompt-pricing.php` and produces a `CostCalculation` (input / output / cache-write / cache-read / total USD) along with an immutable `PricingSnapshot` for audit.
+  - Bills reasoning/thought tokens at the output rate.
+  - Unknown models fall back to a zero-cost snapshot (with throttled warning) by default; switch to `unknown_model_behavior = throw` to fail loudly.
+- **`Kent013\PrismPrompt\Pricing\CostCalculation`** and **`PricingSnapshot`** DTOs. `PricingSnapshot` round-trips via `toArray()` / `fromArray()` for persistence.
+- **Shipped default pricing** (`config/prism-prompt-pricing.php`) for current Anthropic Claude models. Publish with `php artisan vendor:publish --tag=prism-prompt-pricing` and override in your app to keep up with vendor price changes.
+
+### Changed
+
+- `Prompt::executePrism()` now computes cost via the `LlmPricingService` singleton (bound in `PromptServiceProvider`) before dispatching `PromptExecutionCompleted`. If the service is unavailable or pricing resolution throws unexpectedly, `cost` is left `null` and the error is logged — the LLM call itself is never affected.
+- `PromptExecutionCompleted::$cost` is a non-breaking additive field (defaults to `null`). Existing listeners continue to work unchanged.
+
+### Notes
+
+- FX conversion (e.g. USD→JPY) and cost persistence are intentionally **not** in the package. Apps that need non-USD accounting or historical cost logs should subscribe to `PromptExecutionCompleted` and handle those concerns locally.
+
 ## [0.7.0] - 2026-04-14
 
 ### Added

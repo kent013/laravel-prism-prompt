@@ -13,6 +13,8 @@ use Kent013\PrismPrompt\Contracts\PromptInterface;
 use Kent013\PrismPrompt\Events\PromptExecutionCompleted;
 use Kent013\PrismPrompt\Events\PromptExecutionFailed;
 use Kent013\PrismPrompt\Exceptions\InvalidJsonResponseException;
+use Kent013\PrismPrompt\Pricing\CostCalculation;
+use Kent013\PrismPrompt\Pricing\LlmPricingService;
 use Kent013\PrismPrompt\Testing\PromptFake;
 use Kent013\PrismPrompt\Testing\TextResponseFake;
 use Kent013\PrismPrompt\Traits\ResolvesProviderConfig;
@@ -22,6 +24,7 @@ use Prism\Prism\Text\Response as TextResponse;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\ProviderTool;
+use Prism\Prism\ValueObjects\Usage;
 use React\Promise\PromiseInterface;
 use RuntimeException;
 use Throwable;
@@ -372,6 +375,41 @@ abstract class Prompt implements PromptInterface
     }
 
     /**
+     * Resolve USD cost for the call, returning null if the service is
+     * unavailable or pricing resolution throws unexpectedly.
+     */
+    private function computeCost(string $provider, string $model, Usage $usage, string $executionId): ?CostCalculation
+    {
+        if (! app()->bound(LlmPricingService::class)) {
+            return null;
+        }
+
+        try {
+            /** @var LlmPricingService $service */
+            $service = app(LlmPricingService::class);
+
+            return $service->calculate(
+                provider: $provider,
+                model: $model,
+                inputTokens: $usage->promptTokens,
+                outputTokens: $usage->completionTokens,
+                cacheWriteInputTokens: $usage->cacheWriteInputTokens,
+                cacheReadInputTokens: $usage->cacheReadInputTokens,
+                thoughtTokens: $usage->thoughtTokens,
+            );
+        } catch (Throwable $e) {
+            Log::error('Failed to compute LLM cost', [
+                'execution_id' => $executionId,
+                'provider' => $provider,
+                'model' => $model,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
      * Execute Prism LLM call
      */
     protected function executePrism(): string
@@ -437,6 +475,8 @@ abstract class Prompt implements PromptInterface
 
             $durationMs = (microtime(true) - $startTime) * 1000;
 
+            $cost = $this->computeCost($provider, $model, $result->usage, $executionId);
+
             try {
                 event(new PromptExecutionCompleted(
                     executionId: $executionId,
@@ -451,6 +491,7 @@ abstract class Prompt implements PromptInterface
                     requestId: $result->meta->id ?? null,
                     response: $result,
                     metadata: $this->metadata_context,
+                    cost: $cost,
                 ));
             } catch (Throwable $eventError) {
                 Log::error('Failed to dispatch PromptExecutionCompleted event', [

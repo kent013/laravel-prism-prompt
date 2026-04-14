@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Illuminate\Support\Collection;
 use Kent013\PrismPrompt\Events\PromptExecutionCompleted;
 use Kent013\PrismPrompt\Events\PromptExecutionFailed;
+use Kent013\PrismPrompt\Pricing\CostCalculation;
+use Kent013\PrismPrompt\Pricing\PricingSnapshot;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Text\Response as TextResponse;
 use Prism\Prism\ValueObjects\Meta;
@@ -79,6 +81,68 @@ describe('PromptExecutionCompleted', function () {
         expect($event->promptTemplate)->toBeNull();
         expect($event->requestId)->toBeNull();
         expect($event->metadata)->toBe([]);
+    });
+
+    it('defaults cost to null when not supplied', function () {
+        $response = makeTextResponse();
+
+        $event = new PromptExecutionCompleted(
+            executionId: 'exec-nocost',
+            promptClass: 'X',
+            promptTemplate: null,
+            provider: 'p',
+            model: 'm',
+            finishReason: FinishReason::Stop,
+            stepCount: 0,
+            totalUsage: $response->usage,
+            durationMs: 1.0,
+            requestId: null,
+            response: $response,
+            metadata: [],
+        );
+
+        expect($event->cost)->toBeNull();
+    });
+
+    it('exposes a CostCalculation when supplied', function () {
+        $response = makeTextResponse();
+        $snapshot = new PricingSnapshot(
+            inputPerMillion: 3.0,
+            outputPerMillion: 15.0,
+            cacheWritePerMillion: null,
+            cacheReadPerMillion: null,
+            unit: 'per_1m_tokens',
+            currency: 'USD',
+            source: 'test',
+        );
+        $cost = new CostCalculation(
+            inputCostUsd: 0.03,
+            outputCostUsd: 0.30,
+            cacheWriteCostUsd: null,
+            cacheReadCostUsd: null,
+            totalCostUsd: 0.33,
+            snapshot: $snapshot,
+        );
+
+        $event = new PromptExecutionCompleted(
+            executionId: 'exec-cost',
+            promptClass: 'X',
+            promptTemplate: null,
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-6',
+            finishReason: FinishReason::Stop,
+            stepCount: 1,
+            totalUsage: $response->usage,
+            durationMs: 10.0,
+            requestId: null,
+            response: $response,
+            metadata: [],
+            cost: $cost,
+        );
+
+        expect($event->cost)->toBe($cost);
+        expect($event->cost->totalCostUsd)->toBe(0.33);
+        expect($event->cost->snapshot->source)->toBe('test');
     });
 });
 
