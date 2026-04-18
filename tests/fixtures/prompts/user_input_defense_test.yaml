@@ -1,0 +1,12 @@
+name: user_input_defense_test
+provider: anthropic
+model: claude-sonnet-4-5-20250929
+max_tokens: 256
+
+system_prompt: |
+  {{ \Kent013\PrismPrompt\Values\DefensiveInstructions::forUserInput() }}
+
+  You are a test evaluator.
+
+prompt: |
+  {{ $userMessage }}

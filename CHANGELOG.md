@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-04-18
+
+### Added
+
+- **`UserInput` value object for prompt-injection mitigation** (`Kent013\PrismPrompt\Values\UserInput`):
+  - Wrap untrusted end-user-supplied strings before injecting them into a prompt template.
+  - `UserInput::from($value)` factory or `UserInput::withTag($value, 'user_query')` for a custom tag name.
+  - On render, content is wrapped in `<user_input> ... </user_input>` delimiters so the model can be instructed to treat it as data, not instructions.
+  - **Breakout escape** is **case-insensitive and whitespace-tolerant** via regex `/<\s*\/?\s*TAG\s*>/i`: closing/opening variants such as `</user_input>`, `</USER_INPUT>`, `</User_Input>`, `</user_input >`, `<\n/user_input\n>`, `</  user_input  >` are all rewritten to `<user_input_escaped>` / `</user_input_escaped>`, so an adversarial user cannot close the boundary and inject at the surrounding prompt level.
+  - Implements `Illuminate\Contracts\Support\Htmlable` so the default Blade `{{ $var }}` syntax emits the tagged content verbatim without `htmlspecialchars` mangling. No YAML/template changes are required to adopt it — only the caller side switches from `$raw` to `UserInput::from($raw)`.
+- **`DefensiveInstructions` helper** (`Kent013\PrismPrompt\Values\DefensiveInstructions`):
+  - `forUserInput(string $tag = 'user_input')` returns an English paragraph (as `Illuminate\Support\HtmlString`) explaining the `<user_input>` security boundary to the model (forbids treating tagged content as instructions, persona overrides, system-prompt disclosure, tool calls, etc.).
+  - `forUserInputJa()` returns the same guidance in Japanese for localised system prompts.
+  - Returns `HtmlString` so Blade's default `{{ $var }}` syntax keeps the `<user_input>` tag visible in the rendered system prompt (no `htmlspecialchars` mangling).
+  - Intended to be prepended in `system_prompt` YAML or in a subclass's `buildSystemMessage()`.
+  - **Not a security guarantee** — combine with output constraints, authorisation checks, and output validation in the application layer.
+
+### Changed
+
+- Documentation-only: README gains a **"Prompt Injection Mitigation"** section describing `UserInput` + `DefensiveInstructions`, plus a new example file [`examples/06-user-input-defense.php`](examples/06-user-input-defense.php) showing the typical call pattern and breakout-escape behaviour.
+
+### Testing
+
+- **43 dedicated injection-attack tests** (package total: 94 → 150 tests, +56, 376 assertions):
+  - Close-tag breakouts in 10 variants (lowercase / uppercase / mixed-case / random-case / leading-whitespace / trailing-whitespace / inner-whitespace / multi-space / newline-separated / stacked).
+  - Open-tag attack variants and nested `<user_input>` attempts.
+  - Already-escaped `</user_input_escaped>` in legitimate content is left untouched (no re-escape loop).
+  - Multi-slot isolation: `user_query` and `user_document` regions do not cross-contaminate.
+  - 7 real-world jailbreak payloads via Pest `dataset()`: delimiter-closure / markdown-wrapped breaks / stacked-break-reopen / long-prefix decoys / unicode-combined / mixed-case close / whitespace-padded close.
+  - Edge cases: 1MB content, whitespace-only content, binary bytes (`\x00..\xff`).
+  - Documented limitations (non-goals): fullwidth homoglyph `＜/user_input＞`, HTML-entity form `&lt;/user_input&gt;`, and social-engineering style injections are intentionally NOT neutralised — the guarantee is purely structural (delimiter integrity).
+  - Blade integration: `{{ $var }}` + `{!! $var !!}` + concatenation + idempotency across multiple `toHtml()` calls.
+  - Structural immutability via `ReflectionClass::isReadOnly()`.
+  - End-to-end `Prompt::fake()` flow verifying the LLM receives exactly one real delimiter pair per `UserInput` slot regardless of attack shape, and that `DefensiveInstructions` actually lands in the system message via YAML `{{ ::forUserInput() }}`.
+
+### Notes
+
+- Backward compatible. Existing YAML templates and Prompt subclasses continue to work unchanged; `UserInput` is entirely opt-in on the caller side.
+
 ## [0.8.1] - 2026-04-14
 
 ### Changed
