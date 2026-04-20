@@ -106,6 +106,19 @@ abstract class Prompt implements PromptInterface
     }
 
     /**
+     * Install a custom PromptFake instance (typically a subclass with
+     * specialized nextResponse() behaviour, e.g. for browser tests that
+     * need a deterministic fake keyed by prompt class).
+     *
+     * This is the injection-point counterpart to fake() for cases where the
+     * default sequence-based PromptFake is not sufficient.
+     */
+    public static function installFake(PromptFake $fake): void
+    {
+        static::$fake = $fake;
+    }
+
+    /**
      * Get the current fake instance
      */
     public static function getFake(): ?PromptFake
