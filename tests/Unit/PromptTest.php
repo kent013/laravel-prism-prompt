@@ -810,3 +810,54 @@ it('separates system message from withMessages for Anthropic compatibility', fun
 
     TestPrompt::stopFaking();
 });
+
+it('installFake replaces the active fake instance with a custom one', function (): void {
+    $customFake = new \Kent013\PrismPrompt\Testing\PromptFake([
+        TextResponseFake::make()->withText('{"message": "from custom fake"}'),
+    ]);
+
+    Prompt::installFake($customFake);
+
+    expect(Prompt::isFaking())->toBeTrue();
+    expect(Prompt::getFake())->toBe($customFake);
+
+    $prompt = new TestPrompt('Alice');
+    expect($prompt->executeSync())->toBe(['message' => 'from custom fake']);
+
+    Prompt::stopFaking();
+});
+
+it('installFake and fake() share the same static slot (one overwrites the other)', function (): void {
+    Prompt::fake([TextResponseFake::make()->withText('{"message": "from fake()"}')]);
+    $originalFake = Prompt::getFake();
+
+    $customFake = new \Kent013\PrismPrompt\Testing\PromptFake([]);
+    Prompt::installFake($customFake);
+
+    expect(Prompt::getFake())->not->toBe($originalFake);
+    expect(Prompt::getFake())->toBe($customFake);
+
+    Prompt::stopFaking();
+});
+
+it('installFake accepts PromptFake subclasses', function (): void {
+    $subclassFake = new class extends \Kent013\PrismPrompt\Testing\PromptFake
+    {
+        public function __construct()
+        {
+            parent::__construct([]);
+        }
+
+        public function nextResponse(): TextResponseFake
+        {
+            return TextResponseFake::make()->withText('{"message": "deterministic subclass"}');
+        }
+    };
+
+    Prompt::installFake($subclassFake);
+
+    $prompt = new TestPrompt('Alice');
+    expect($prompt->executeSync())->toBe(['message' => 'deterministic subclass']);
+
+    Prompt::stopFaking();
+});
