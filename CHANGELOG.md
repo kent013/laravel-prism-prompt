@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-04-20
+
+### Added
+
+- **`Prompt::installFake(PromptFake $fake)` static method** — public injection point for custom `PromptFake` instances (typically subclasses with specialized `nextResponse()` behaviour). Useful for browser/E2E tests that need a deterministic fake keyed by prompt class, where the default sequence-based `PromptFake` returned by `Prompt::fake($responses)` is insufficient.
+  - Backwards compatible: does not modify `fake()` / `getFake()` / `isFaking()` / `stopFaking()` semantics.
+  - Shares the same static `$fake` slot as `fake()` — calling one overrides the other.
+
+### Testing
+
+- 3 regression tests added in `tests/Unit/PromptTest.php`:
+  - `installFake` replaces the active fake instance with a custom one
+  - `installFake` and `fake()` share the same static slot
+  - `installFake` accepts `PromptFake` subclasses
+
 ## [0.9.0] - 2026-04-18
 
 ### Added
