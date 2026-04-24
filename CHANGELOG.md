@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-04-24
+
+### Added
+
+- **`Prompt::withCacheBreakpoints(array $sectionToCacheType): static`** — mark YAML `sections:` entries whose rendered content should be emitted with a provider cache-control marker (e.g. Anthropic `cache_control: {type: ephemeral}`). Unknown section names fail fast with `InvalidCacheBreakpointException` so typos do not silently disable caching.
+- **`CacheType` enum** (`Kent013\PrismPrompt\Values\CacheType`) — currently declares the `Ephemeral` case; the enum string value matches the Anthropic API value verbatim so callers can serialize directly.
+- **`PromptPool::executeWithWarmup(array $prompts, ?int $concurrency = null, ?MessagesRequestBuilder $builder = null): array`** — execute a batch of prompts against the Anthropic Messages API with **warmup-then-parallel** semantics:
+  1. The first prompt is sent alone so any `cache_control: ephemeral` breakpoints get written to the provider cache.
+  2. The remaining prompts are fired in parallel chunks of up to `concurrency` requests at a time, so each of them reads the warm cache entry populated by step 1.
+  - Bypasses Prism's builder (retry, trace, etc.) so HTTP failures surface to the caller's retry strategy (e.g. Laravel job `$tries`). Domain mapping (index → axis / category / etc.) happens upstream via `PoolExecutionException::getPromptIndex()`.
+  - `concurrency` defaults to `config('prism-prompt.pool.concurrency')` (env `PRISM_PROMPT_POOL_CONCURRENCY`; accepts both int and numeric strings from `.env`; null = no cap beyond the remaining-prompt count).
+  - Optional `$builder` parameter accepts a preconfigured `MessagesRequestBuilder` (e.g. with a tenant-specific API key) or a test double; defaults to `app(MessagesRequestBuilder::class)`.
+- **`MessagesRequestBuilder`** (`Kent013\PrismPrompt\Providers\Anthropic\MessagesRequestBuilder`) — builds a byte-stable Anthropic Messages API payload (url / headers / body) from a `Prompt` instance. Used by `PromptPool` for both the warmup single-shot and each parallel call so the provider sees byte-identical request bodies (required for cache key hits to register). Constructor accepts optional `?string $apiKey` for explicit runtime override; falls back to `config('prism.providers.anthropic.api_key')` when null. `cache_control` is GA on the 2023-06-01 API family and does **not** require the former `anthropic-beta: prompt-caching-2024-07-31` header, so the builder keeps its header set minimal.
+- **`PoolExecutionException`** — thrown on any single-prompt failure inside `PromptPool::executeWithWarmup`. Carries `getPromptIndex(): int` (position in the input list; warmup = 0) and the underlying `Throwable` as `$previous`, so callers can map back to their own domain identifier.
+- **`InvalidCacheBreakpointException`** — thrown from `withCacheBreakpoints()` when a section name is not declared under YAML `sections:`.
+- **Public hooks on `Prompt`** for direct-HTTP request builders that bypass `executePrism()`:
+  - `getRenderedSections(): array<string,string>` — Blade-render each YAML `sections:` entry at call-time.
+  - `getRenderedSystemPrompt(): string` — Blade-render `system_prompt:` (`''` when absent).
+  - `getImagePaths(): list<string>` — base returns `[]`; subclasses override when they support image inputs.
+  - `getCacheBreakpoints(): array<string,CacheType>`, `getClientOptions(): array<string,mixed>`, `getModel(): string`, `getMaxTokens(): int` — expose resolved runtime config for the HTTP layer.
+  - `renderUserPromptForPool(): string`, `parseResponseForPool(string): mixed` — **`@internal` public hooks** used by `PromptPool` to bridge to the subclass's protected `render()` / `parseResponse()`. **Not covered by SemVer BC promises; end-user code should continue using `executeSync()` / `execute()`.**
+
+### Config
+
+- **`prism-prompt.pool.concurrency`** (`env('PRISM_PROMPT_POOL_CONCURRENCY')`) — default concurrency for `PromptPool::executeWithWarmup`. Accepts `null` / `""` / int / positive numeric-string; any other value (negative, float, non-numeric string, bool) raises `InvalidArgumentException` at execution time.
+
+### Testing
+
+- 22 regression tests added across two new suites:
+  - `tests/Unit/WithCacheBreakpointsTest.php` (8): known/unknown section names, section rendering with template variables, no-sections default, system-prompt accessor, model / max_tokens / client_options / image accessors.
+  - `tests/Unit/PromptPoolTest.php` (14): single-prompt shortcut, warmup-then-parallel order, `cache_control` attachment, header/body shape, HTTP 500 → `PoolExecutionException(index=0)`, concurrency-arg validation, config-capped concurrency, empty-input rejection, second-chunk index preservation (`getPromptIndex` = 2), API-key non-leak into exception messages, builder injection override, numeric-string config acceptance (`.env`), non-numeric-string rejection.
+- Package total: 153 → 175 tests (+22); 382 → 430 assertions.
+
+### Notes
+
+- `PromptPool` is Anthropic-specific in this release. Non-Anthropic providers should continue calling `Prompt::executeSync()` / `execute()` via Prism.
+- The `@internal` hooks (`renderUserPromptForPool` / `parseResponseForPool`) are public because PHP requires public visibility for cross-class access without reflection; they are not part of the end-user API surface.
+
 ## [0.10.0] - 2026-04-20
 
 ### Added

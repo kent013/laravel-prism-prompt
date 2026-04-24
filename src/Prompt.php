@@ -12,12 +12,14 @@ use JsonException;
 use Kent013\PrismPrompt\Contracts\PromptInterface;
 use Kent013\PrismPrompt\Events\PromptExecutionCompleted;
 use Kent013\PrismPrompt\Events\PromptExecutionFailed;
+use Kent013\PrismPrompt\Exceptions\InvalidCacheBreakpointException;
 use Kent013\PrismPrompt\Exceptions\InvalidJsonResponseException;
 use Kent013\PrismPrompt\Pricing\CostCalculation;
 use Kent013\PrismPrompt\Pricing\LlmPricingService;
 use Kent013\PrismPrompt\Testing\PromptFake;
 use Kent013\PrismPrompt\Testing\TextResponseFake;
 use Kent013\PrismPrompt\Traits\ResolvesProviderConfig;
+use Kent013\PrismPrompt\Values\CacheType;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Text\Response as TextResponse;
@@ -67,6 +69,9 @@ abstract class Prompt implements PromptInterface
 
     /** @var array<string, mixed> */
     protected array $metadata_context = [];
+
+    /** @var array<string, CacheType> */
+    protected array $cacheBreakpoints = [];
 
     public function __construct()
     {
@@ -186,6 +191,155 @@ abstract class Prompt implements PromptInterface
         $this->metadata_context = array_merge($this->metadata_context, $metadata);
 
         return $this;
+    }
+
+    /**
+     * Mark YAML sections whose rendered content should be cached by the
+     * provider (e.g. Anthropic prompt caching). Each section name must match
+     * a key under the YAML `sections:` map; unknown section names raise
+     * InvalidCacheBreakpointException so typos fail fast rather than
+     * silently disabling caching.
+     *
+     * @param  array<string, CacheType>  $sectionToCacheType
+     */
+    public function withCacheBreakpoints(array $sectionToCacheType): static
+    {
+        $sections = $this->metadata['sections'] ?? [];
+        Assert::isArray($sections, 'YAML `sections` must be an associative array when using cache breakpoints');
+
+        foreach ($sectionToCacheType as $sectionName => $cacheType) {
+            Assert::string($sectionName, 'cache breakpoint section name must be a string');
+            Assert::isInstanceOf($cacheType, CacheType::class);
+            if (! array_key_exists($sectionName, $sections)) {
+                throw new InvalidCacheBreakpointException(
+                    "Section '{$sectionName}' is not defined under YAML `sections:` key"
+                );
+            }
+        }
+
+        $this->cacheBreakpoints = $sectionToCacheType;
+
+        return $this;
+    }
+
+    /**
+     * Get the configured cache breakpoints (section name → CacheType).
+     *
+     * @return array<string, CacheType>
+     */
+    public function getCacheBreakpoints(): array
+    {
+        return $this->cacheBreakpoints;
+    }
+
+    /**
+     * Render each YAML `sections:` entry through Blade and return the map
+     * of section name → rendered text. Returns an empty array when the YAML
+     * does not declare `sections:`.
+     *
+     * @return array<string, string>
+     */
+    public function getRenderedSections(): array
+    {
+        $sections = $this->metadata['sections'] ?? [];
+        if (! is_array($sections) || $sections === []) {
+            return [];
+        }
+
+        $variables = $this->resolveTemplateVariables();
+        $rendered = [];
+        foreach ($sections as $name => $template) {
+            Assert::string($name, 'YAML section names must be strings');
+            Assert::string($template, "YAML section '{$name}' value must be a string");
+            $rendered[$name] = Blade::render($template, $variables);
+        }
+
+        return $rendered;
+    }
+
+    /**
+     * Render the YAML `system_prompt:` field through Blade, or empty string
+     * if the YAML does not define one. Convenience for callers that expect a
+     * definite string (e.g. direct Messages API request builders).
+     */
+    public function getRenderedSystemPrompt(): string
+    {
+        return $this->renderSystemPrompt() ?? '';
+    }
+
+    /**
+     * Paths to images (e.g. screenshots) that should be attached to the
+     * request as image content blocks. Base implementation returns an empty
+     * list — subclasses override when they support image inputs.
+     *
+     * @return list<string>
+     */
+    public function getImagePaths(): array
+    {
+        return [];
+    }
+
+    /**
+     * Resolved client options (class property > YAML > empty), exposed for
+     * direct Messages API request builders that need to forward them.
+     *
+     * @return array<string, mixed>
+     */
+    public function getClientOptions(): array
+    {
+        return $this->resolveClientOptions();
+    }
+
+    /**
+     * Resolved model name (class property > YAML > config).
+     */
+    public function getModel(): string
+    {
+        return $this->resolveModel();
+    }
+
+    /**
+     * Resolved max_tokens (class property > YAML > config).
+     */
+    public function getMaxTokens(): int
+    {
+        return $this->resolveMaxTokens();
+    }
+
+    /**
+     * Render the YAML `prompt:` field (the user message body) through Blade.
+     *
+     * Public hook so that direct-HTTP request builders (e.g.
+     * {@see PromptPool}) can retrieve the rendered body without reaching
+     * into protected scope via reflection. Mirrors the output of the
+     * internal render() call used by executePrism().
+     *
+     * @internal Intended for package-internal use by PromptPool and
+     *           provider-specific request builders. Subclasses should
+     *           continue overriding render() if they need to customise.
+     *           Not covered by SemVer backward-compatibility promises.
+     */
+    public function renderUserPromptForPool(): string
+    {
+        return $this->render();
+    }
+
+    /**
+     * Parse a response text into the subclass-specific DTO.
+     *
+     * Public hook counterpart to the protected parseResponse() for callers
+     * that bypass executePrism()/executeSync() (e.g. {@see PromptPool}).
+     * Delegates straight to the subclass implementation.
+     *
+     * @return TResponse
+     *
+     * @internal Intended for package-internal use by PromptPool and
+     *           provider-specific request builders.
+     *           Not covered by SemVer backward-compatibility promises.
+     */
+    public function parseResponseForPool(string $responseText): mixed
+    {
+        return $this->parseResponse($responseText);
     }
 
     /**

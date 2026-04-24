@@ -95,6 +95,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Prompt Pool Settings
+    |--------------------------------------------------------------------------
+    |
+    | Concurrency for Kent013\PrismPrompt\PromptPool::executeWithWarmup().
+    | When null, the pool fans out to all remaining prompts in a single chunk
+    | after warmup (i.e. no cap). Set this to a positive integer to throttle
+    | concurrent HTTP requests per chunk. Individual callers may override via
+    | the $concurrency argument.
+    |
+    */
+    'pool' => [
+        'concurrency' => env('PRISM_PROMPT_POOL_CONCURRENCY'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Debug Settings
     |--------------------------------------------------------------------------
     |

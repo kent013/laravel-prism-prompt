@@ -16,6 +16,7 @@ Structure your LLM prompts with **YAML templates + PHP classes**, just like Lara
 - **Caller-side metadata** — `withMetadata(['organization_id' => 42, 'subject_id' => 1, ...])` flows into events so observers can attribute cost/usage to your own domain objects
 - **Built-in USD cost calculation** — Per-model prices resolved from a publishable config; cost scalars + `PricingSnapshot` are attached to every success event (FX conversion stays in your app)
 - **Prompt injection mitigation** — Wrap untrusted user-supplied strings with `UserInput` to get automatic `<user_input>` delimiter wrapping + tag-breakout escaping. Paired with `DefensiveInstructions` guidance paragraphs for system prompts
+- **Parallel execution with prompt caching** — `PromptPool::executeWithWarmup()` runs a batch of prompts against the Anthropic Messages API with a warmup-then-parallel strategy, so a cached section (declared via `withCacheBreakpoints()` + YAML `sections:`) is written once and reused by every parallel call
 - **Mailable-like testing** — Mock LLM calls with `Prompt::fake()`. Verify message contents with `assertSystemMessageContains()` / `assertUserMessageContains()` and more
 - **Embedding support** — Vector generation via `EmbeddingPrompt` using `Prism::embeddings()`
 - **Listener-based debug logging** — Opt-in `PerformanceLogListener` + `PerformanceDebugFileListener` log execution time / tokens and optionally save prompt/response/metadata files. Enabled via config only — no code changes needed
@@ -467,6 +468,56 @@ system_prompt: |
   - **System prompt constraints** — explicit allowlist of what the model may/may not do, refusal policies for out-of-scope requests.
 - Does **not** interact with Prism's function/tool calling — if you expose tools, authorise each tool call independently on the caller side.
 - Does **not** sanitise the response text — only the request input side.
+
+## Parallel Execution with Prompt Caching (Anthropic)
+
+For batch workloads where several prompts share most of their context (e.g. 6-axis heuristic evaluation, per-page SEO passes), `PromptPool::executeWithWarmup()` sends the first prompt alone so that a cache-flagged shared section is written to the Anthropic prompt cache, then fans out the remaining prompts in parallel HTTP calls that all read the cached section.
+
+### YAML: declare sections
+
+```yaml
+# resources/prompts/heuristic/useful.yaml
+name: heuristic-useful
+provider: anthropic
+model: claude-sonnet-4-5-20250929
+max_tokens: 8192
+system_prompt: |
+  You are a UX auditor. Evaluate the UX Honeycomb "Useful" axis.
+sections:
+  shared: |
+    Page context: {{ $pageName }} ({{ $pageUrl }})
+    Site: {{ $siteName }}
+  axis: |
+    Focus axis: useful
+prompt: |
+  Return a JSON report: ...
+```
+
+### Usage
+
+```php
+use Kent013\PrismPrompt\PromptPool;
+use Kent013\PrismPrompt\Values\CacheType;
+
+$prompts = collect(['useful', 'usable', 'findable'])
+    ->map(fn (string $axis) => HeuristicAxisPrompt::load("heuristic/{$axis}", $shared)
+        ->withCacheBreakpoints(['shared' => CacheType::Ephemeral]))
+    ->all();
+
+// Warmup: first prompt fires alone (writes shared section to the provider cache).
+// Parallel: remaining prompts fire with Http::pool, each reading the warm cache.
+$results = PromptPool::executeWithWarmup($prompts, concurrency: 5);
+```
+
+- The builder is shared between the warmup single-shot and each parallel call, so the request bodies are byte-identical up to the per-prompt differences. Cache key hits register when the shared section is byte-stable.
+- `concurrency` defaults to `config('prism-prompt.pool.concurrency')` (env `PRISM_PROMPT_POOL_CONCURRENCY`). Arg overrides config.
+- Pass a third argument `?MessagesRequestBuilder $builder = null` to inject a preconfigured builder (tenant-specific API key, test double, etc.).
+- Failures throw `PoolExecutionException` with `getPromptIndex(): int` so callers can map back to their domain (axis / category / ...). The underlying exception is attached as `$previous`.
+- `PromptPool` is Anthropic-only in 0.11. Non-Anthropic providers should keep using `Prompt::executeSync()`.
+
+### Internal hooks (`@internal`)
+
+`Prompt::renderUserPromptForPool()` and `parseResponseForPool()` are `public` but marked `@internal` — they exist so `PromptPool` and direct-HTTP request builders can bridge to the subclass's protected `render()` / `parseResponse()` without reflection. **They are not covered by SemVer BC promises; end-user code should continue using `executeSync()` / `execute()`.**
 
 ## Testing with Fake
 

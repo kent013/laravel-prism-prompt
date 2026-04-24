@@ -812,7 +812,7 @@ it('separates system message from withMessages for Anthropic compatibility', fun
 });
 
 it('installFake replaces the active fake instance with a custom one', function (): void {
-    $customFake = new \Kent013\PrismPrompt\Testing\PromptFake([
+    $customFake = new Kent013\PrismPrompt\Testing\PromptFake([
         TextResponseFake::make()->withText('{"message": "from custom fake"}'),
     ]);
 
@@ -831,7 +831,7 @@ it('installFake and fake() share the same static slot (one overwrites the other)
     Prompt::fake([TextResponseFake::make()->withText('{"message": "from fake()"}')]);
     $originalFake = Prompt::getFake();
 
-    $customFake = new \Kent013\PrismPrompt\Testing\PromptFake([]);
+    $customFake = new Kent013\PrismPrompt\Testing\PromptFake([]);
     Prompt::installFake($customFake);
 
     expect(Prompt::getFake())->not->toBe($originalFake);
@@ -841,7 +841,7 @@ it('installFake and fake() share the same static slot (one overwrites the other)
 });
 
 it('installFake accepts PromptFake subclasses', function (): void {
-    $subclassFake = new class extends \Kent013\PrismPrompt\Testing\PromptFake
+    $subclassFake = new class extends Kent013\PrismPrompt\Testing\PromptFake
     {
         public function __construct()
         {
