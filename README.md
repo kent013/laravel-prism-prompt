@@ -20,6 +20,7 @@ Structure your LLM prompts with **YAML templates + PHP classes**, just like Lara
 - **Mailable-like testing** — Mock LLM calls with `Prompt::fake()`. Verify message contents with `assertSystemMessageContains()` / `assertUserMessageContains()` and more
 - **Embedding support** — Vector generation via `EmbeddingPrompt` using `Prism::embeddings()`
 - **Listener-based debug logging** — Opt-in `PerformanceLogListener` + `PerformanceDebugFileListener` log execution time / tokens and optionally save prompt/response/metadata files. Enabled via config only — no code changes needed
+- **`PromptOperation` job coordinator** (v0.12+, opt-in) — wrap one or more `Prompt` executions inside a durable, resumable operation. Survives reload / LLM failure / process crash / 2-tab race by atomically claiming a Job row + heartbeat + phase manifest + per-phase checkpoint. The `Prompt` class itself is unchanged; opt in only when you need durable coordination. See `examples/07-prompt-operation.php`
 
 ## Installation
 

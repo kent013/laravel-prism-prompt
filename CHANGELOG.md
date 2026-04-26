@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-04-26
+
+### Added — Prompt Operation 基盤 (opt-in)
+
+LLM 呼び出しを含む operation を妨害 (リロード / LLM 失敗 / プロセスクラッシュ /
+2 タブ並行) に対して堅牢化し、途中から再開可能にする Job 基盤。
+`Prompt` クラスは無変更。`PromptOperation` を独立 coordinator として追加。
+
+- **`Kent013\PrismPrompt\Operation\PromptOperation::for($scope, $operationName, $idempotencyKey, $version=1)`** — entry point。
+  - `->withPhases(['phase-a', 'phase-b'])` で phase manifest を宣言
+  - `->withSerializationGroup('training-write:42')` で同一 scope 内の別 operation との排他制御
+  - `->withHeartbeatTtl(90)` で stale 検知の閾値秒数を設定
+  - `->withRetryFailed(true)` (default) で `failed` 状態の Job も再 claim 可能
+  - `->claimOrFollow()` で `ClaimResult` を返す
+- **`ClaimResult` sealed 6 種** — `OwnerClaim` / `SameOperationFollower` / `BlockedBySerialization` / `AlreadyCompleted` / `AlreadyFailed` / `AlreadyCancelled`
+- **`PromptOperationHandle`** — Owner 専用 API:
+  - `->phase($name, $body, ?$onSkipped, ?$onCommit)` — phase 実行ラッパー。body 内で
+    LLM 呼び出し + 副作用永続化を行い、`onCommit` が phase row insert と同一
+    transaction 内で実行される (副作用の draft → active promote 等)
+  - `->complete(?$onCommit)` — 全 phase 完了検証後に status='completed'
+  - `->fail($e, ?$onFail)` — エラー記録
+  - `->cancel($reason, ?$onCancel)` — 明示キャンセル
+  - `->follow(): FollowResult` — Follower 専用、leader の完了を polling
+  - `->metadata()` — `Prompt::withMetadata()` 用の metadata builder
+- **`PromptJobPhase` interface** — body 内で受け取る phase handle:
+  - `attachLlmCallLog(int $logId)` / `attachLlmCallByCorrelationId(string $cid)` で
+    phase ↔ llm_call_log を紐付け (correlation_id は 2 段階解決で event listener 経由
+    の遅延記録にも対応)
+  - `setOutputReference(string)` / `heartbeat()` (long-running phase 用)
+- **DB schema** — `prism_prompt_jobs` / `_job_attempts` / `_job_phases` /
+  `_job_phase_llm_calls` / `_serialization_locks` / `_pending_llm_call_resolutions` の
+  6 テーブル。`config('prism-prompt.jobs.table_prefix')` でプレフィックス変更可
+- **Lifecycle events** (全て `ShouldDispatchAfterCommit`):
+  `PromptJobClaimed` / `PromptJobPhaseStarted` / `PromptJobPhaseCompleted` /
+  `PromptJobPhaseFailed` / `PromptJobCompleted` / `PromptJobFailed` /
+  `PromptJobCancelled` / `PromptJobStaleDetected`
+- **`ResolvePendingLlmCallReferences` listener** — `PromptExecutionCompleted` 受信時に
+  pending 行を解決 (after-commit listener 等で llm_call_logs が後から記録されるケースに対応)
+- **`prism:prompt-jobs:prune` artisan command** — retention 設定に従って古い行を削除
+  (`completed: 30d` / `failed: 90d` / `cancelled: 90d` がデフォルト、env で上書き可)
+- **`config/prism-prompt.php` の `jobs` セクション** — `enabled=true` (default) で migration が
+  load される。`PRISM_PROMPT_JOBS_ENABLED=false` で無効化可能
+
+### Notes
+
+- 既存ユーザーは何もしなくても動作変化なし (Job 機能は opt-in: `enabled=true` がデフォルト
+  だが、`PromptOperation::for()` を呼ばない限り何も起きない)
+- 既存 `Prompt::execute()` / `executeSync()` / `Prompt::fake()` は完全互換
+- migration は `loadMigrationsFrom` で自動 load される。テスト環境で disable したい場合は
+  `prism-prompt.jobs.enabled=false` にする
+
 ## [0.11.0] - 2026-04-24
 
 ### Added

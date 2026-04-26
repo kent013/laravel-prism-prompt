@@ -9,6 +9,8 @@ use Illuminate\Support\ServiceProvider;
 use Kent013\PrismPrompt\Events\PromptExecutionCompleted;
 use Kent013\PrismPrompt\Listeners\PerformanceDebugFileListener;
 use Kent013\PrismPrompt\Listeners\PerformanceLogListener;
+use Kent013\PrismPrompt\Operation\Console\PruneJobsCommand;
+use Kent013\PrismPrompt\Operation\Listeners\ResolvePendingLlmCallReferences;
 use Kent013\PrismPrompt\Pricing\LlmPricingService;
 
 class PromptServiceProvider extends ServiceProvider
@@ -44,6 +46,12 @@ class PromptServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../config/prism-prompt-pricing.php' => config_path('prism-prompt-pricing.php'),
             ], 'prism-prompt-pricing');
+
+            // Operation Job migration を opt-in 時のみ load
+            if (config('prism-prompt.jobs.enabled', true)) {
+                $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+                $this->commands([PruneJobsCommand::class]);
+            }
         }
 
         if (config('prism-prompt.debug.enabled')) {
@@ -52,6 +60,11 @@ class PromptServiceProvider extends ServiceProvider
 
         if (config('prism-prompt.debug.save_files')) {
             Event::listen(PromptExecutionCompleted::class, PerformanceDebugFileListener::class);
+        }
+
+        // Operation Job: pending llm_call resolution listener
+        if (config('prism-prompt.jobs.enabled', true)) {
+            Event::listen(PromptExecutionCompleted::class, ResolvePendingLlmCallReferences::class);
         }
     }
 }
