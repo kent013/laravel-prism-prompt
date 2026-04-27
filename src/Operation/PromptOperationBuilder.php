@@ -141,27 +141,33 @@ final class PromptOperationBuilder
             // 既存 Job の lease semantics と claim 時の指定値が異なる場合、subtle なバグ
             // (例: 既存 owner は heartbeat_ttl=180 で動いているのに新 claim が 90 で待つ → 早期 takeover)
             // を防ぐため LeaseSemanticMismatchException を throw する。
-            // INSERT 直後 (job が初期値) は upgrade される。
-            $semanticsAreInitial = $job->serialization_group === null && $job->heartbeat_ttl_seconds === 0;
-            if ($semanticsAreInitial) {
+            //
+            // 既存 Job の値が初期値 (null / 0) の場合は claim 値で upgrade する (旧 schema 互換)。
+            // 各フィールドを独立に評価することで、片方だけ初期値の場合も柔軟に upgrade できる。
+            $needsSave = false;
+            if ($job->serialization_group === null) {
                 $job->serialization_group = $this->serializationGroup;
+                $needsSave = true;
+            } elseif ($job->serialization_group !== $this->serializationGroup) {
+                throw new LeaseSemanticMismatchException(
+                    "Serialization group mismatch for job {$job->id}: existing="
+                        .var_export($job->serialization_group, true)
+                        .' got='.var_export($this->serializationGroup, true)
+                        .'. operationVersion を bump してください'
+                );
+            }
+            // null も初期値扱い (R1 Warning fix: 旧データ migration / nullable column 互換)
+            if ($job->heartbeat_ttl_seconds === 0 || $job->heartbeat_ttl_seconds === null) {
                 $job->heartbeat_ttl_seconds = $this->heartbeatTtlSeconds;
+                $needsSave = true;
+            } elseif ($job->heartbeat_ttl_seconds !== $this->heartbeatTtlSeconds) {
+                throw new LeaseSemanticMismatchException(
+                    "Heartbeat TTL mismatch for job {$job->id}: existing={$job->heartbeat_ttl_seconds}"
+                        ." got={$this->heartbeatTtlSeconds}. operationVersion を bump してください"
+                );
+            }
+            if ($needsSave) {
                 $job->save();
-            } else {
-                if ($job->serialization_group !== $this->serializationGroup) {
-                    throw new LeaseSemanticMismatchException(
-                        "Serialization group mismatch for job {$job->id}: existing="
-                            .var_export($job->serialization_group, true)
-                            .' got='.var_export($this->serializationGroup, true)
-                            .'. operationVersion を bump してください'
-                    );
-                }
-                if ($job->heartbeat_ttl_seconds !== $this->heartbeatTtlSeconds) {
-                    throw new LeaseSemanticMismatchException(
-                        "Heartbeat TTL mismatch for job {$job->id}: existing={$job->heartbeat_ttl_seconds}"
-                            ." got={$this->heartbeatTtlSeconds}. operationVersion を bump してください"
-                    );
-                }
             }
 
             // Step D: terminal 早期返却 / follower 判定
