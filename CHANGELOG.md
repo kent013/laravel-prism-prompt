@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] - 2026-04-28
+
+### Added — lease semantic drift 検出 (`LeaseSemanticMismatchException`)
+
+`PromptOperationBuilder::claimOrFollow()` で、既存 PromptJob と claim 時の
+`serialization_group` / `heartbeat_ttl_seconds` が一致しない場合に
+`LeaseSemanticMismatchException` を throw する。
+
+#### 修正の背景
+
+監査で「lease semantic drift を検出していない」と指摘された。例:
+- 既存 owner が `heartbeat_ttl=180s` で動いているのに、新 claim が `heartbeat_ttl=90s` で
+  follower 待機 → leader 健全でも 90s で stale 判定して takeover してしまう
+- 既存 Job が `serialization_group="encounter-write:abc"` で row lock 取っているのに、
+  新 claim が違う group を指定 → 並行 LLM 呼び出しが起きうる
+
+これらは subtle で、phase manifest 整合性検査だけでは捕まえられない。
+
+#### 動作
+
+- INSERT 直後 (`serialization_group === null && heartbeat_ttl_seconds === 0`) は
+  claim 値で upgrade される (既存挙動維持)
+- 既存値と新 claim 値が異なる場合 `LeaseSemanticMismatchException` を throw
+
+#### Migration
+
+- 既存 deployment で claim パラメータを変更する場合は `operationVersion` を bump する
+- 既存 Job の retention を待ってから新 semantics に切り替える
+
+#### Migration code path 例
+
+```php
+// 旧: heartbeat_ttl=90 で運用中
+PromptOperation::for($scope, 'op', $key)->withHeartbeatTtl(90)->claimOrFollow();
+
+// 新: 180 に変えたい場合は operationVersion を bump
+PromptOperation::for($scope, 'op', $key)
+    ->withOperationVersion(2) // 旧 v1 Job と namespace が分かれる
+    ->withHeartbeatTtl(180)
+    ->claimOrFollow();
+```
+
 ## [0.14.1] - 2026-04-28
 
 ### Fixed — `streamingPhase()` の generic 型を厳格化 (PHPStan 型伝播)

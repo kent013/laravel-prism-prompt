@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Kent013\PrismPrompt\Operation\Exceptions\InconsistentPhaseManifestException;
 use Kent013\PrismPrompt\Operation\Exceptions\InvalidPhaseManifestException;
+use Kent013\PrismPrompt\Operation\Exceptions\LeaseSemanticMismatchException;
 use Kent013\PrismPrompt\Operation\Models\PromptJob;
 use Kent013\PrismPrompt\Operation\Models\PromptJobAttempt;
 use Kent013\PrismPrompt\Operation\Models\PromptSerializationLock;
@@ -130,6 +131,35 @@ final class PromptOperationBuilder
                     throw new InconsistentPhaseManifestException(
                         "Phase manifest mismatch for job {$job->id}: expected ".json_encode($job->phase_manifest)
                             .' got '.json_encode($this->phaseManifest)
+                    );
+                }
+            }
+
+            // v0.14.2 Step C-2: lease semantics (serialization_group / heartbeat_ttl_seconds) drift 検出
+            // (audit Round 1 観点 1 Warning 対応)。
+            //
+            // 既存 Job の lease semantics と claim 時の指定値が異なる場合、subtle なバグ
+            // (例: 既存 owner は heartbeat_ttl=180 で動いているのに新 claim が 90 で待つ → 早期 takeover)
+            // を防ぐため LeaseSemanticMismatchException を throw する。
+            // INSERT 直後 (job が初期値) は upgrade される。
+            $semanticsAreInitial = $job->serialization_group === null && $job->heartbeat_ttl_seconds === 0;
+            if ($semanticsAreInitial) {
+                $job->serialization_group = $this->serializationGroup;
+                $job->heartbeat_ttl_seconds = $this->heartbeatTtlSeconds;
+                $job->save();
+            } else {
+                if ($job->serialization_group !== $this->serializationGroup) {
+                    throw new LeaseSemanticMismatchException(
+                        "Serialization group mismatch for job {$job->id}: existing="
+                            .var_export($job->serialization_group, true)
+                            .' got='.var_export($this->serializationGroup, true)
+                            .'. operationVersion を bump してください'
+                    );
+                }
+                if ($job->heartbeat_ttl_seconds !== $this->heartbeatTtlSeconds) {
+                    throw new LeaseSemanticMismatchException(
+                        "Heartbeat TTL mismatch for job {$job->id}: existing={$job->heartbeat_ttl_seconds}"
+                            ." got={$this->heartbeatTtlSeconds}. operationVersion を bump してください"
                     );
                 }
             }
