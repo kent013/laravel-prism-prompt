@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.4] - 2026-04-28
+
+### Refactored — `follow()` terminal 判定 sequence の共通化
+
+`PromptOperationHandle::resolveFollowResult()` private helper を導入し、
+while loop 終了直後と deadline 到達時で同じ terminal 状態解決ロジックを通すよう統一。
+
+#### 修正の背景
+
+v0.14.3 で deadline 到達時に最終 fresh load + terminal 判定を追加した際、
+loop 内の terminal 判定 (status='completed'/'failed'/'cancelled') と deadline 後の
+terminal 判定が同じ status マッピングを 2 か所で書く形になっていた。
+将来 terminal 状態を追加する際に片方だけ更新する乖離リスクがあったため、
+private helper に集約して一本化する内部リファクタ。
+
+#### 動作
+
+- 動作互換 (外部 API / event / DB schema 変更なし)
+- v0.14.3 利用 app は無変更で動く (Codex R1 Suggestion ベース)
+
+#### Migration
+
+不要。
+
 ## [0.14.3] - 2026-04-28
 
 ### Fixed — `follow()` deadline 到達時の terminal 再判定
