@@ -226,3 +226,29 @@ test('manifest 順序通りに phase が実行できる', function () {
     $handle->complete();
     expect($handle->job()->fresh()->status)->toBe('completed');
 });
+
+test('v0.13.0: ULID 主キーの scope モデルでも (int) cast collision なく 1 model = 1 scope_id で識別される', function () {
+    // 同じ ULID 接頭辞 (現年内すべて "01..." を共有) を持つ別 scope を 2 つ作る。
+    // 旧 v0.12.0 では (int) "01..." → 1 で両方が衝突していた。
+    $scopeA = $this->makeFakeUlidScope();
+    $scopeB = $this->makeFakeUlidScope();
+    expect($scopeA->id)->not->toBe($scopeB->id);
+    expect(strlen($scopeA->id))->toBeGreaterThan(20);  // ULID is 26 chars
+
+    // 同 idempotency_key で claim — 別 scope なら別 Job として claim できるはず
+    $claimA = PromptOperation::for($scopeA, 'training.send-message', 'shared-key')
+        ->withPhases(['phase-a'])
+        ->claimOrFollow();
+    $claimB = PromptOperation::for($scopeB, 'training.send-message', 'shared-key')
+        ->withPhases(['phase-a'])
+        ->claimOrFollow();
+
+    expect($claimA)->toBeInstanceOf(OwnerClaim::class)
+        ->and($claimB)->toBeInstanceOf(OwnerClaim::class);
+
+    // 各 scope に対し 1 PromptJob が独立して作られる (collision なし)
+    $jobs = PromptJob::query()->orderBy('id')->get();
+    expect($jobs)->toHaveCount(2);
+    expect($jobs[0]->scope_id)->toBe($scopeA->id)
+        ->and($jobs[1]->scope_id)->toBe($scopeB->id);
+});

@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * @property int $id
  * @property string $scope_type
- * @property int $scope_id
+ * @property string $scope_id (v0.13.0: int → string)
  * @property string $serialization_group
  * @property int $job_id
  * @property string $owner_token
@@ -37,7 +37,7 @@ class PromptSerializationLock extends Model
             'acquired_at' => 'immutable_datetime',
             'heartbeat_at' => 'immutable_datetime',
             'expires_at' => 'immutable_datetime',
-            'scope_id' => 'integer',
+            'scope_id' => 'string',
             'job_id' => 'integer',
         ];
     }

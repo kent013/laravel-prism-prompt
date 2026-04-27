@@ -18,7 +18,8 @@ return new class extends Migration
         Schema::create($this->table(), function (Blueprint $table): void {
             $table->id();
             $table->string('scope_type');
-            $table->unsignedBigInteger('scope_id');
+            // v0.13.0: scope_id を string 化 (jobs テーブルと整合)
+            $table->string('scope_id', 255);
             $table->string('serialization_group');
             $table->unsignedBigInteger('job_id');
             $table->char('owner_token', 36);

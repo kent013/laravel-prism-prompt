@@ -11,7 +11,7 @@ final class BlockedBySerialization implements ClaimResult
 {
     public function __construct(
         private readonly string $scopeType,
-        private readonly int $scopeId,
+        private readonly string $scopeId,
         private readonly string $serializationGroup,
         private readonly int $blockingJobId,
     ) {}

@@ -37,7 +37,7 @@ final class InternalPromptJobPhase implements PromptJobPhase
         private readonly string $phaseName,
         private readonly int $heartbeatTtlSeconds,
         private readonly string $scopeType,
-        private readonly int $scopeId,
+        private readonly string $scopeId,
         private readonly ?string $serializationGroup,
     ) {}
 

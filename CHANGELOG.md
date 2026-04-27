@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-04-27
+
+### Changed — `scope_id` を string 化 (BREAKING for users of v0.12.0)
+
+`PromptOperation` の scope モデルとして `HasUlids` 等の string 主キーを持つ
+モデルもサポートするため、`scope_id` を `unsignedBigInteger` から `string(255)` に変更。
+
+#### 修正の背景 (v0.12.0 のバグ)
+
+v0.12.0 では `PromptOperationBuilder` が `(int) $this->scope->getKey()` でキャストして
+`scope_id` を確定していた。これは `HasUlids` 等の string 主キー (例: ULID
+"01kq6hd3yytp6r4jdz7hfst5y4") を持つモデルに対して致命的な collision を引き起こした:
+
+- ULID は時刻接頭辞のため、同じ年内のすべての ULID が `01...` で始まる
+- PHP の `(int) "01kq..."` は `1` を返す (先頭の数字部分のみ parse)
+- 結果として **同じ年に作られた全 Encounter が `scope_id=1` に collision** していた
+- 同じ idempotency_key を別 Encounter で使うと UNIQUE 制約違反、または誤った dedup
+
+#### 変更点
+
+- `prism_prompt_jobs.scope_id`: `unsignedBigInteger` → `string(255)`
+- `prism_prompt_serialization_locks.scope_id`: 同上
+- `PromptOperationBuilder`: `(int) $scope->getKey()` → `(string) $scope->getKey()`
+- `PromptJob` model: cast `'scope_id' => 'integer'` → `'string'`
+- `PromptSerializationLock` model: 同上
+- `PromptOperationHandle` / `BlockedBySerialization` / `InternalPromptJobPhase` /
+  `PromptMetadataBuilder`: コンストラクタ引数の `int $scopeId` → `string $scopeId`
+
+#### 影響
+
+- v0.12.0 で integer 主キー (autoincrement / `bigInteger`) のモデルを使っていたユーザー:
+  PHP は integer も `(string)` cast で動くため、コードレベルでは互換。ただし migration
+  を再適用する必要がある (既存データは migration で型変更が必要)
+- v0.12.0 で string 主キー (HasUlids 等) のモデルを使っていたユーザー: 上記 collision バグから救済される
+- migration: 既存テーブルの型変更が必要 (`Schema::table` で `string` への ALTER COLUMN)。
+  すでに本番投入してデータがある環境では schema 変更時のデータ migration が必要
+
+#### Test
+
+`tests/Operation/PromptOperationTest.php` に `v0.13.0: ULID 主キーの scope モデルでも
+(int) cast collision なく 1 model = 1 scope_id で識別される` を追加。
+
+---
+
 ## [0.12.0] - 2026-04-26
 
 ### Added — Prompt Operation 基盤 (opt-in)

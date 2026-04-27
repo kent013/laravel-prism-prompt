@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * @property int $id
  * @property string $scope_type
- * @property int $scope_id
+ * @property string $scope_id (v0.13.0: int → string で HasUlids 等もサポート)
  * @property string $operation_name
  * @property int $operation_version
  * @property string $idempotency_key
@@ -51,7 +51,7 @@ class PromptJob extends Model
             'cancelled_at' => 'immutable_datetime',
             'operation_version' => 'integer',
             'heartbeat_ttl_seconds' => 'integer',
-            'scope_id' => 'integer',
+            'scope_id' => 'string',
         ];
     }
 

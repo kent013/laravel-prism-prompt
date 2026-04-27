@@ -25,8 +25,11 @@ return new class extends Migration
             $table->id();
 
             // Job 識別 (scope は app 側のドメインモデル)
+            // v0.13.0: scope_id を string 化。HasUlids 等の string 主キーを持つ
+            // モデルでも scope として使えるようにするため (旧 unsignedBigInteger では
+            // (int) cast で ULID が collision する致命バグがあった)
             $table->string('scope_type');
-            $table->unsignedBigInteger('scope_id');
+            $table->string('scope_id', 255);
             $table->string('operation_name');
             $table->unsignedInteger('operation_version')->default(1);
             $table->string('idempotency_key');

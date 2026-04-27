@@ -23,7 +23,7 @@ final class PromptMetadataBuilder
         private readonly PromptJob $job,
         private readonly ?PromptJobAttempt $attempt,
         private readonly string $scopeType,
-        private readonly int $scopeId,
+        private readonly string $scopeId,
         private readonly ?string $phaseName = null,
     ) {}
 

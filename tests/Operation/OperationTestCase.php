@@ -36,6 +36,13 @@ abstract class OperationTestCase extends TestCase
                 $table->string('name');
                 $table->timestamps();
             });
+        // v0.13.0: string 主キー (ULID 想定) の scope テーブル
+        $this->app['db']->connection()->getSchemaBuilder()
+            ->create('fake_ulid_scopes', function ($table): void {
+                $table->ulid('id')->primary();
+                $table->string('name');
+                $table->timestamps();
+            });
         // app 側の llm_call_logs を模した最小テーブル
         $this->app['db']->connection()->getSchemaBuilder()
             ->create('llm_call_logs', function ($table): void {
@@ -49,11 +56,25 @@ abstract class OperationTestCase extends TestCase
     {
         return FakeScope::create(['name' => 'scope-'.bin2hex(random_bytes(4))]);
     }
+
+    protected function makeFakeUlidScope(): FakeUlidScope
+    {
+        return FakeUlidScope::create(['name' => 'ulid-scope-'.bin2hex(random_bytes(4))]);
+    }
 }
 
 class FakeScope extends Model
 {
     protected $table = 'fake_scopes';
+
+    protected $guarded = [];
+}
+
+class FakeUlidScope extends Model
+{
+    use \Illuminate\Database\Eloquent\Concerns\HasUlids;
+
+    protected $table = 'fake_ulid_scopes';
 
     protected $guarded = [];
 }

@@ -25,7 +25,7 @@ final class PromptOperationHandle
         private PromptJob $job,
         private readonly ?PromptJobAttempt $ownerAttempt,
         private readonly string $scopeType,
-        private readonly int $scopeId,
+        private readonly string $scopeId,
         private readonly array $phaseManifest,
         private readonly int $heartbeatTtlSeconds,
         private readonly ?string $serializationGroup,

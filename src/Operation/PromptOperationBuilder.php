@@ -103,7 +103,7 @@ final class PromptOperationBuilder
 
         $newToken = (string) Str::uuid();
         $scopeType = $this->scope->getMorphClass();
-        $scopeId = (int) $this->scope->getKey();
+        $scopeId = (string) $this->scope->getKey();
 
         return DB::transaction(function () use ($newToken, $scopeType, $scopeId): ClaimResult {
             // Step A: 行確保 (race-safe)
@@ -224,7 +224,7 @@ final class PromptOperationBuilder
         });
     }
 
-    private function ensureJobRowExists(string $scopeType, int $scopeId): void
+    private function ensureJobRowExists(string $scopeType, string $scopeId): void
     {
         // Postgres / MySQL 両対応の race-safe insert (CONFLICT は raw 不要、Eloquent firstOrCreate 相当)
         PromptJob::query()->firstOrCreate(
@@ -248,7 +248,7 @@ final class PromptOperationBuilder
     /**
      * lock テーブルを更新し、owner となった job_id を返す。自分が取れなければ blocking job_id が返る。
      */
-    private function acquireSerializationLock(string $scopeType, int $scopeId, int $jobId, string $newToken): int
+    private function acquireSerializationLock(string $scopeType, string $scopeId, int $jobId, string $newToken): int
     {
         $now = now();
         $expiresAt = $now->copy()->addSeconds($this->heartbeatTtlSeconds);
@@ -310,7 +310,7 @@ final class PromptOperationBuilder
             job: $job,
             ownerAttempt: $attempt,
             scopeType: $this->scope->getMorphClass(),
-            scopeId: (int) $this->scope->getKey(),
+            scopeId: (string) $this->scope->getKey(),
             phaseManifest: $this->phaseManifest,
             heartbeatTtlSeconds: $this->heartbeatTtlSeconds,
             serializationGroup: $this->serializationGroup,
