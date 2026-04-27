@@ -438,22 +438,9 @@ final class PromptOperationHandle
         $deadline = CarbonImmutable::now()->addSeconds($maxWait);
         $i = 0;
         while (CarbonImmutable::now()->lt($deadline)) {
-            /** @var PromptJob|null $job */
-            $job = $this->job->fresh();
-            if ($job === null) {
-                return FollowResult::cancelled($this->job);
-            }
-            if ($job->status === 'completed') {
-                return FollowResult::completed($job);
-            }
-            if ($job->status === 'failed') {
-                return FollowResult::failed($job);
-            }
-            if ($job->status === 'cancelled') {
-                return FollowResult::cancelled($job);
-            }
-            if ($job->isStale()) {
-                return FollowResult::stale($job);
+            $resolved = $this->resolveFollowResult(false);
+            if ($resolved !== null) {
+                return $resolved;
             }
             $sleep = (int) $intervalsMs[min($i, count($intervalsMs) - 1)];
             usleep($sleep * 1000);
@@ -462,25 +449,46 @@ final class PromptOperationHandle
 
         // v0.14.3: deadline 到達後の最終 terminal 再判定。
         // poll 間隔と deadline のズレで「最終 sleep 中に leader が完了したのに timeout を返す」
-        // race を解消する。
-        $final = $this->job->fresh();
-        if ($final === null) {
+        // race を解消する。terminal 判定 sequence は loop 内と共通化 (R1 Suggestion 反映)。
+        $resolved = $this->resolveFollowResult(true);
+        assert($resolved !== null, 'timeoutFallback=true は必ず FollowResult を返す');
+
+        return $resolved;
+    }
+
+    /**
+     * v0.14.3 R1 Suggestion fix: follow() の loop 内 / deadline 後の terminal 判定 sequence を共通化。
+     *
+     * 戻り値:
+     *   - terminal が確定 (completed/failed/cancelled/stale) なら対応する FollowResult
+     *   - 進行中 (pending/generating) で `$timeoutFallback=true` なら timeout
+     *   - 進行中 (pending/generating) で `$timeoutFallback=false` なら null (loop 続行)
+     *
+     * `fresh() === null` は cancelled 扱い。retention.cancelled_days = 90 で削除されたケースを
+     * pessimistic 安全側に解釈する (本来の意味的 cancelled と区別したい場合は呼び出し側で
+     * `$result->job->cancelled_at !== null` 等を確認)。
+     */
+    private function resolveFollowResult(bool $timeoutFallback): ?FollowResult
+    {
+        /** @var PromptJob|null $job */
+        $job = $this->job->fresh();
+        if ($job === null) {
             return FollowResult::cancelled($this->job);
         }
-        if ($final->status === 'completed') {
-            return FollowResult::completed($final);
+        if ($job->status === 'completed') {
+            return FollowResult::completed($job);
         }
-        if ($final->status === 'failed') {
-            return FollowResult::failed($final);
+        if ($job->status === 'failed') {
+            return FollowResult::failed($job);
         }
-        if ($final->status === 'cancelled') {
-            return FollowResult::cancelled($final);
+        if ($job->status === 'cancelled') {
+            return FollowResult::cancelled($job);
         }
-        if ($final->isStale()) {
-            return FollowResult::stale($final);
+        if ($job->isStale()) {
+            return FollowResult::stale($job);
         }
 
-        return FollowResult::timeout($final);
+        return $timeoutFallback ? FollowResult::timeout($job) : null;
     }
 
     public function metadata(): PromptMetadataBuilder
