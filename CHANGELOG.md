@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.3] - 2026-04-28
+
+### Fixed — `follow()` deadline 到達時の terminal 再判定
+
+`PromptOperationHandle::follow()` は while loop が deadline を超えると無条件に
+`FollowResult::timeout()` を返していたため、「最終 sleep 中に leader が完了したのに
+follower が timeout を報告する」 race が起き得た。
+
+#### 修正の背景
+
+監査で「`follow()` は最後に terminal 再判定もしません」と指摘された。例:
+- maxWait=120s, leader が 119.9s で complete
+- follower の最終 poll は 117s で実行 → 次の sleep が 2s で deadline 到達 → timeout 返却
+- しかし実際は leader 既完了 → 同 key 再 claim すると `AlreadyCompleted` が返る
+
+#### 動作
+
+deadline 到達後、loop を抜ける前に最終 fresh load を行い、
+- `completed` → `FollowResult::completed`
+- `failed` → `FollowResult::failed`
+- `cancelled` → `FollowResult::cancelled`
+- `stale` (heartbeat 切れ) → `FollowResult::stale`
+- まだ generating なら `FollowResult::timeout` を返す
+
+を再判定する。これにより poll 間隔 / deadline のズレで「実際は完了しているのに timeout」
+となる false negative が解消される。
+
+#### Migration
+
+不要 (シグネチャ変更なし)。既存利用箇所は自動的に新挙動を享受する。
+
 ## [0.14.2] - 2026-04-28
 
 ### Added — lease semantic drift 検出 (`LeaseSemanticMismatchException`)

@@ -426,6 +426,10 @@ final class PromptOperationHandle
 
     /**
      * Follower 専用: leader の完了を待ち、結果を返す。
+     *
+     * v0.14.3 (audit Warning 観点 1 対応): deadline 到達時に最終 fresh load + terminal 判定を
+     * 行い、follow() loop の poll 間隔と deadline 到達タイミングのズレで「leader 既完了
+     * なのに timeout を返す」race を解消する。
      */
     public function follow(): FollowResult
     {
@@ -456,7 +460,27 @@ final class PromptOperationHandle
             $i++;
         }
 
-        return FollowResult::timeout($this->job->fresh() ?? $this->job);
+        // v0.14.3: deadline 到達後の最終 terminal 再判定。
+        // poll 間隔と deadline のズレで「最終 sleep 中に leader が完了したのに timeout を返す」
+        // race を解消する。
+        $final = $this->job->fresh();
+        if ($final === null) {
+            return FollowResult::cancelled($this->job);
+        }
+        if ($final->status === 'completed') {
+            return FollowResult::completed($final);
+        }
+        if ($final->status === 'failed') {
+            return FollowResult::failed($final);
+        }
+        if ($final->status === 'cancelled') {
+            return FollowResult::cancelled($final);
+        }
+        if ($final->isStale()) {
+            return FollowResult::stale($final);
+        }
+
+        return FollowResult::timeout($final);
     }
 
     public function metadata(): PromptMetadataBuilder
