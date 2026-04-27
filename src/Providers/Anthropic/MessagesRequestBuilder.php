@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kent013\PrismPrompt\Providers\Anthropic;
 
 use Kent013\PrismPrompt\Prompt;
+use Kent013\PrismPrompt\PromptPool;
 use Kent013\PrismPrompt\Values\CacheType;
 use RuntimeException;
 use Webmozart\Assert\Assert;
@@ -16,7 +17,7 @@ use Webmozart\Assert\Assert;
  * {@see Prompt::withCacheBreakpoints()}.
  *
  * The same builder is used for both the warmup single-shot call and each
- * subsequent parallel call in {@see \Kent013\PrismPrompt\PromptPool} so that
+ * subsequent parallel call in {@see PromptPool} so that
  * the cache key hashes produced by the provider are byte-identical between
  * the two paths (required for cache hits to register).
  *
@@ -51,7 +52,6 @@ final class MessagesRequestBuilder
 
     /**
      * @param  Prompt<mixed>  $prompt
-     *
      * @return array{
      *     url: string,
      *     headers: array<string, string>,
@@ -90,7 +90,6 @@ final class MessagesRequestBuilder
 
     /**
      * @param  Prompt<mixed>  $prompt
-     *
      * @return list<array<string, mixed>>
      */
     private function buildContentBlocks(Prompt $prompt): array

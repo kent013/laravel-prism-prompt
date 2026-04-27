@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kent013\PrismPrompt\Operation\Models;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -81,8 +82,8 @@ class PromptJob extends Model
         return $token !== null && $token === $this->owner_token;
     }
 
-    /** @return \Illuminate\Database\Eloquent\Builder<self> */
-    public static function active(): \Illuminate\Database\Eloquent\Builder
+    /** @return Builder<self> */
+    public static function active(): Builder
     {
         return self::query()->where('status', 'generating');
     }
@@ -92,9 +93,9 @@ class PromptJob extends Model
      * 厳密な stale 判定は PHP 側 isStale() で行う (heartbeat_ttl_seconds が行ごとに違うため
      * SQL での日付演算は DB driver 依存になりやすい)。
      *
-     * @return \Illuminate\Database\Eloquent\Builder<self>
+     * @return Builder<self>
      */
-    public static function stale(): \Illuminate\Database\Eloquent\Builder
+    public static function stale(): Builder
     {
         return self::query()->where('status', 'generating');
     }

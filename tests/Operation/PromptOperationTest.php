@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Kent013\PrismPrompt\Operation\AlreadyCompleted;
+use Kent013\PrismPrompt\Operation\BlockedBySerialization;
 use Kent013\PrismPrompt\Operation\Exceptions\IncompletePhaseException;
 use Kent013\PrismPrompt\Operation\Exceptions\InvalidPhaseManifestException;
 use Kent013\PrismPrompt\Operation\Exceptions\UnknownPhaseException;
@@ -210,7 +211,7 @@ test('SerializationGroup: 同じ group の別 operation は BlockedBySerializati
         ->withSerializationGroup('g1')
         ->claimOrFollow();
 
-    expect($second)->toBeInstanceOf(Kent013\PrismPrompt\Operation\BlockedBySerialization::class);
+    expect($second)->toBeInstanceOf(BlockedBySerialization::class);
 });
 
 test('manifest 順序通りに phase が実行できる', function () {

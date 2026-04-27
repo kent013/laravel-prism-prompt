@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\HtmlString;
 use Kent013\PrismPrompt\Values\DefensiveInstructions;
 use Kent013\PrismPrompt\Values\UserInput;
 
@@ -114,7 +115,7 @@ describe('DefensiveInstructions', function () {
 
     it('returns HtmlString so Blade {{ $var }} does not escape tags', function () {
         $html = DefensiveInstructions::forUserInput();
-        expect($html)->toBeInstanceOf(Illuminate\Support\HtmlString::class);
+        expect($html)->toBeInstanceOf(HtmlString::class);
 
         $rendered = Blade::render('{{ $g }}', ['g' => $html]);
         expect($rendered)->toContain('<user_input>');

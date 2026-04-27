@@ -7,6 +7,7 @@ use Kent013\PrismPrompt\Prompt;
 use Kent013\PrismPrompt\Testing\TextResponseFake;
 use Kent013\PrismPrompt\Values\DefensiveInstructions;
 use Kent013\PrismPrompt\Values\UserInput;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 
 /**
  * UserInput を prompt injection 攻撃ベクタごとに突いて、
@@ -283,7 +284,7 @@ describe('UserInput — integration with Prompt::fake() and DefensiveInstruction
 
         $fake->assertRequest(function (array $recorded): void {
             $userMsg = end($recorded[0]['messages']);
-            assert($userMsg instanceof Prism\Prism\ValueObjects\Messages\UserMessage);
+            assert($userMsg instanceof UserMessage);
             $body = $userMsg->content;
             // Exactly ONE real close tag appears — at the boundary. Every
             // variant attempt inside was neutralised to *_escaped.
@@ -347,7 +348,7 @@ YAML);
 
         $fake->assertRequest(function (array $recorded): void {
             $userMsg = end($recorded[0]['messages']);
-            assert($userMsg instanceof Prism\Prism\ValueObjects\Messages\UserMessage);
+            assert($userMsg instanceof UserMessage);
             $body = $userMsg->content;
             // Blade's default `{{ $var }}` calls htmlspecialchars on plain
             // strings, so `</user_input>` becomes `&lt;/user_input&gt;`.

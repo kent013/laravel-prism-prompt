@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Kent013\PrismPrompt\Exceptions\PoolExecutionException;
 use Kent013\PrismPrompt\Prompt;
 use Kent013\PrismPrompt\PromptPool;
+use Kent013\PrismPrompt\Providers\Anthropic\MessagesRequestBuilder;
 use Kent013\PrismPrompt\Values\CacheType;
 
 class PoolPrompt extends Prompt
@@ -274,7 +275,7 @@ it('accepts an injected MessagesRequestBuilder override', function (): void {
         'api.anthropic.com/v1/messages' => Http::response(fakeAnthropic(), 200),
     ]);
 
-    $builder = new Kent013\PrismPrompt\Providers\Anthropic\MessagesRequestBuilder(
+    $builder = new MessagesRequestBuilder(
         apiKey: 'tenant-specific-key',
     );
 

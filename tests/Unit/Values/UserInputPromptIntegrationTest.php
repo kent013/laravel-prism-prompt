@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Kent013\PrismPrompt\Prompt;
 use Kent013\PrismPrompt\Testing\TextResponseFake;
 use Kent013\PrismPrompt\Values\UserInput;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 
 describe('UserInput integration with Prompt::load()', function () {
     it('renders UserInput wrapped and escaped in the user message sent to Prism', function () {
@@ -43,7 +44,7 @@ describe('UserInput integration with Prompt::load()', function () {
         $fake->assertUserMessageContains('trusted developer text');
         $fake->assertRequest(function (array $recorded): void {
             $userMsg = end($recorded[0]['messages']);
-            assert($userMsg instanceof Prism\Prism\ValueObjects\Messages\UserMessage);
+            assert($userMsg instanceof UserMessage);
             expect($userMsg->content)->not->toContain('<user_input>');
         });
 

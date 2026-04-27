@@ -22,6 +22,11 @@ declare(strict_types=1);
  * 各 phase で Prompt を呼び、結果を draft で永続化 → onCommit で active に promote。
  */
 
+use App\Models\Training\TrainingSessionMessage;
+use App\Models\UserScenarioProgress;
+use App\Services\AI\Prompts\AnalyzeProgressPrompt;
+use App\Services\AI\Prompts\GenerateInitialMessagePrompt;
+use App\Services\Billing\TrainingCreditService;
 use Carbon\CarbonImmutable;
 use Kent013\PrismPrompt\Operation\AlreadyCancelled;
 use Kent013\PrismPrompt\Operation\AlreadyCompleted;
@@ -35,7 +40,7 @@ use Kent013\PrismPrompt\Operation\SameOperationFollower;
 use Kent013\PrismPrompt\Operation\WaitResult;
 
 // app 側の domain model (UserScenarioProgress 等)
-$progress = App\Models\UserScenarioProgress::find(7);
+$progress = UserScenarioProgress::find(7);
 
 for ($attempt = 0; $attempt < 3; $attempt++) {
     $claim = PromptOperation::for($progress, 'training.initial-message', 'fixed')
@@ -57,7 +62,7 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
                         ->correlationIdFromPhase()
                         ->toArguments();
 
-                    $response = (new App\Services\AI\Prompts\GenerateInitialMessagePrompt)
+                    $response = (new GenerateInitialMessagePrompt)
                         ->withMetadata($metadata)
                         ->executeSync();
 
@@ -66,7 +71,7 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
                     $phase->attachLlmCallByCorrelationId($metadata['correlation_id']);
 
                     // 副作用永続化: draft で書き込む
-                    $message = App\Models\Training\TrainingSessionMessage::create([
+                    $message = TrainingSessionMessage::create([
                         'user_scenario_progress_id' => $progress->id,
                         'job_id' => $handle->job()->id,
                         'attempt_id' => $phase->attemptId(),
@@ -79,11 +84,11 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
                 },
                 onCommit: function (PromptJobPhase $phase) use ($progress): void {
                     // Phase 完了 transaction 内で draft → active promote
-                    App\Models\Training\TrainingSessionMessage::query()
+                    TrainingSessionMessage::query()
                         ->where('user_scenario_progress_id', $progress->id)
                         ->where('visibility', 'active')
                         ->update(['visibility' => 'inactive']);
-                    App\Models\Training\TrainingSessionMessage::query()
+                    TrainingSessionMessage::query()
                         ->where('user_scenario_progress_id', $progress->id)
                         ->where('attempt_id', $phase->attemptId())
                         ->where('visibility', 'draft')
@@ -97,7 +102,7 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
 
             // Phase 2: 進捗ガイド評価
             $handle->phase('analyze-progress', function (PromptJobPhase $phase): void {
-                $response = (new App\Services\AI\Prompts\AnalyzeProgressPrompt)
+                $response = (new AnalyzeProgressPrompt)
                     ->withMetadata($phase->metadata()->correlationIdFromPhase()->toArguments())
                     ->executeSync();
                 $phase->attachLlmCallByCorrelationId($phase->metadata()->correlationIdFromPhase()->toArguments()['correlation_id']);
@@ -106,13 +111,13 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
 
             // 全 phase 完了 → status='completed' + credit commit
             $handle->complete(onCommit: function (PromptOperationHandle $h): void {
-                app(App\Services\Billing\TrainingCreditService::class)->commitOperation($h);
+                app(TrainingCreditService::class)->commitOperation($h);
             });
 
             // SSE で永続化済 messages を replay する等 (省略)
         } catch (Throwable $e) {
             $handle->fail($e, onFail: function (PromptOperationHandle $h): void {
-                app(App\Services\Billing\TrainingCreditService::class)->releaseOperation($h);
+                app(TrainingCreditService::class)->releaseOperation($h);
             });
 
             throw $e;

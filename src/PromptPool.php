@@ -45,7 +45,6 @@ final class PromptPool
      * @template TResponse
      *
      * @param  list<Prompt<TResponse>>  $prompts
-     *
      * @return list<TResponse>
      */
     public static function executeWithWarmup(
@@ -118,7 +117,6 @@ final class PromptPool
      * @template TResponse
      *
      * @param  Prompt<TResponse>  $prompt
-     *
      * @return TResponse
      */
     private static function executeSingle(Prompt $prompt, MessagesRequestBuilder $builder, int $index): mixed
@@ -149,7 +147,6 @@ final class PromptPool
      * @template TResponse
      *
      * @param  Prompt<TResponse>  $prompt
-     *
      * @return TResponse
      */
     private static function parse(Prompt $prompt, Response $response): mixed
@@ -175,7 +172,6 @@ final class PromptPool
 
     /**
      * @param  int<1, max>  $max
-     *
      * @return int<1, max>
      *
      * @throws InvalidArgumentException
