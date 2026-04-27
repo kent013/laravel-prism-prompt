@@ -252,3 +252,102 @@ test('v0.13.0: ULID 主キーの scope モデルでも (int) cast collision な�
     expect($jobs[0]->scope_id)->toBe($scopeA->id)
         ->and($jobs[1]->scope_id)->toBe($scopeB->id);
 });
+
+test('v0.14.0 streamingPhase: body の yield が caller に forward され、終了後に commit transaction が走る', function () {
+    $scope = $this->makeFakeScope();
+    /** @var OwnerClaim $claim */
+    $claim = PromptOperation::for($scope, 'op', 'k')
+        ->withPhases(['phase-a'])
+        ->claimOrFollow();
+    $handle = $claim->handle();
+
+    $events = [];
+    foreach ($handle->streamingPhase('phase-a', function () {
+        yield 'event-1';
+        yield 'event-2';
+        yield 'event-3';
+    }) as $event) {
+        $events[] = $event;
+    }
+
+    expect($events)->toBe(['event-1', 'event-2', 'event-3']);
+
+    // body 終了後に phase commit が走り、子テーブルに row が入る
+    $job = $handle->job()->fresh();
+    expect($job->phases()->where('phase_name', 'phase-a')->count())->toBe(1);
+});
+
+test('v0.14.0 streamingPhase: body が Generator を返さないと TypeError', function () {
+    $scope = $this->makeFakeScope();
+    /** @var OwnerClaim $claim */
+    $claim = PromptOperation::for($scope, 'op', 'k')
+        ->withPhases(['phase-a'])
+        ->claimOrFollow();
+    $handle = $claim->handle();
+
+    $caught = null;
+    try {
+        foreach ($handle->streamingPhase('phase-a', function (): void {
+            // not a generator (no yield)
+        }) as $_) {
+        }
+    } catch (\TypeError $e) {
+        $caught = $e;
+    }
+    expect($caught)->not->toBeNull()
+        ->and($caught->getMessage())->toContain('streamingPhase body must return a Generator');
+});
+
+test('v0.14.0 streamingPhase: body 内 throw で fail event 発火 + recordPhaseError', function () {
+    $scope = $this->makeFakeScope();
+    /** @var OwnerClaim $claim */
+    $claim = PromptOperation::for($scope, 'op', 'k')
+        ->withPhases(['phase-a'])
+        ->claimOrFollow();
+    $handle = $claim->handle();
+
+    $caught = null;
+    try {
+        foreach ($handle->streamingPhase('phase-a', function () {
+            yield 'event-1';
+            throw new \RuntimeException('boom');
+        }) as $_) {
+        }
+    } catch (\RuntimeException $e) {
+        $caught = $e;
+    }
+    expect($caught?->getMessage())->toBe('boom');
+
+    // phase commit は走らない (child row なし)
+    $job = $handle->job()->fresh();
+    expect($job->phases()->count())->toBe(0);
+    // last_error_message が記録される
+    expect($job->last_error_message)->toBe('boom');
+});
+
+test('v0.14.0 streamingPhase: 既に completed な phase はスキップ + onSkipped 呼び出し', function () {
+    $scope = $this->makeFakeScope();
+    /** @var OwnerClaim $claim */
+    $claim = PromptOperation::for($scope, 'op', 'k')
+        ->withPhases(['phase-a'])
+        ->claimOrFollow();
+    $handle = $claim->handle();
+
+    // phase-a を 1 度実行
+    foreach ($handle->streamingPhase('phase-a', function () {
+        yield 'first';
+    }) as $_) {
+    }
+
+    $skipped = false;
+    foreach ($handle->streamingPhase('phase-a', function () {
+        yield 'should-not-run';
+    }, onSkipped: function () use (&$skipped): void {
+        $skipped = true;
+    }) as $event) {
+        // 何も yield されない
+        expect(false)->toBeTrue('completed phase should not yield');
+    }
+
+    expect($skipped)->toBeTrue();
+});

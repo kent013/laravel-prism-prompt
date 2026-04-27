@@ -101,76 +101,8 @@ final class PromptOperationHandle
         try {
             $result = $body($phaseHandle);
 
-            DB::transaction(function () use ($phaseHandle, $name, $onCommit): void {
-                // 1. ownership 再確認
-                $current = PromptJob::query()->lockForUpdate()->find($this->job->id);
-                if ($current === null || $current->owner_token !== $this->ownerToken()) {
-                    throw new StaleOwnershipException(
-                        "Ownership lost for job {$this->job->id} during phase '{$name}' commit"
-                    );
-                }
-
-                // 2. phase row insert (UNIQUE 重複は例外を起こさせる)
-                $phaseOrder = array_search($name, $this->phaseManifest, true);
-                $phaseRecord = PromptJobPhaseRecord::create([
-                    'job_id' => $this->job->id,
-                    'phase_name' => $name,
-                    'phase_order' => $phaseOrder === false ? 0 : $phaseOrder,
-                    'attempt_id' => $phaseHandle->attemptIdInternal(),
-                    'output_reference' => $phaseHandle->outputReferenceInternal(),
-                    'completed_at' => CarbonImmutable::now(),
-                ]);
-
-                // 3. pending llm_call_log_ids を join table に insert
-                $pendingDirect = $phaseHandle->pendingLlmCallLogIds();
-                $sequence = 1;
-                foreach ($pendingDirect as $logId) {
-                    PromptJobPhaseLlmCall::create([
-                        'phase_id' => $phaseRecord->id,
-                        'llm_call_log_id' => $logId,
-                        'sequence' => $sequence++,
-                        'created_at' => CarbonImmutable::now(),
-                    ]);
-                }
-
-                // 4. correlation_id 経由を 2 段階解決
-                $logsTable = (string) config('prism-prompt.jobs.llm_call_logs_table', 'llm_call_logs');
-                foreach ($phaseHandle->pendingCorrelationIds() as $cid) {
-                    $row = DB::table($logsTable)->where('correlation_id', $cid)->first();
-                    if ($row !== null) {
-                        PromptJobPhaseLlmCall::create([
-                            'phase_id' => $phaseRecord->id,
-                            'llm_call_log_id' => (int) $row->id,
-                            'sequence' => $sequence++,
-                            'created_at' => CarbonImmutable::now(),
-                        ]);
-                        // 同時に pending 行も resolved 状態で記録 (監査用)
-                        PendingLlmCallResolution::create([
-                            'phase_id' => $phaseRecord->id,
-                            'correlation_id' => $cid,
-                            'sequence' => $sequence - 1,
-                            'resolved_at' => CarbonImmutable::now(),
-                            'created_at' => CarbonImmutable::now(),
-                        ]);
-                    } else {
-                        PendingLlmCallResolution::create([
-                            'phase_id' => $phaseRecord->id,
-                            'correlation_id' => $cid,
-                            'sequence' => $sequence++,
-                            'resolved_at' => null,
-                            'created_at' => CarbonImmutable::now(),
-                        ]);
-                    }
-                }
-
-                // 5. app onCommit
-                if ($onCommit !== null) {
-                    $onCommit($phaseHandle);
-                }
-
-                // 6. heartbeat
-                $this->touchHeartbeatInternal();
-            });
+            // v0.14.0: commit transaction を共通 helper に切り出し (streamingPhase と共有)
+            $this->commitPhase($phaseHandle, $name, $onCommit);
 
             event(new Events\PromptJobPhaseCompleted(
                 jobId: $this->job->id,
@@ -192,6 +124,187 @@ final class PromptOperationHandle
 
             throw $e;
         }
+    }
+
+    /**
+     * v0.14.0: Phase 実行 + 中で yield された値を caller に forward する Generator API。
+     *
+     * SSE / streaming pipeline を phase scope に取り込むためのもの。`phase()` と異なり
+     * body は Generator を返す (`yield` で値を caller に流す)。
+     *
+     * 利点:
+     * - phase scope 内で実 work が走るので heartbeat / ownership 再確認が正しく適用される
+     * - `phase()` を no-op marker として使う pattern (T388/T393 で発生) を不要にする
+     * - 監査 (devnotes/20260427-2200-comprehensive-audit/) Critical 1 の構造的解消
+     *
+     * 使用例:
+     * ```php
+     * yield from $handle->streamingPhase('send-message-pipeline', function ($phase) {
+     *     yield from $pipeline->stream(); // SSE event を caller に forward
+     * });
+     * ```
+     *
+     * @param  Closure(PromptJobPhase): \Generator<mixed, mixed, mixed, mixed>  $body
+     * @param  null|Closure(CompletedPhaseRecord): void  $onSkipped
+     * @param  null|Closure(PromptJobPhase): void  $onCommit
+     * @return \Generator<mixed, mixed, mixed, mixed>
+     */
+    public function streamingPhase(
+        string $name,
+        Closure $body,
+        ?Closure $onSkipped = null,
+        ?Closure $onCommit = null,
+    ): \Generator {
+        if (! in_array($name, $this->phaseManifest, true)) {
+            throw new UnknownPhaseException("Phase '{$name}' is not in manifest");
+        }
+
+        $existing = $this->getCompletedPhaseRecord($name);
+        if ($existing !== null) {
+            if ($onSkipped !== null) {
+                $onSkipped(new CompletedPhaseRecord(
+                    name: $existing->phase_name,
+                    outputReference: $existing->output_reference,
+                    completedAt: $existing->completed_at,
+                ));
+            }
+
+            return;
+        }
+
+        $this->assertOwnership();
+        $this->updateCurrentPhase($name);
+
+        $attempt = $this->ownerAttempt;
+        assert($attempt !== null);
+
+        event(new Events\PromptJobPhaseStarted(
+            jobId: $this->job->id,
+            phaseName: $name,
+            attemptId: $attempt->id,
+        ));
+
+        $phaseHandle = new InternalPromptJobPhase(
+            job: $this->job,
+            attempt: $attempt,
+            phaseName: $name,
+            heartbeatTtlSeconds: $this->heartbeatTtlSeconds,
+            scopeType: $this->scopeType,
+            scopeId: $this->scopeId,
+            serializationGroup: $this->serializationGroup,
+        );
+
+        try {
+            $generator = $body($phaseHandle);
+            if (! $generator instanceof \Generator) {
+                throw new \TypeError(
+                    "streamingPhase body must return a Generator. Did you forget `yield`? phase='{$name}'"
+                );
+            }
+            // body の yield をすべて caller に forward
+            yield from $generator;
+
+            // body 完了後に commit transaction (phase() と同一ロジック)
+            $this->commitPhase($phaseHandle, $name, $onCommit);
+
+            event(new Events\PromptJobPhaseCompleted(
+                jobId: $this->job->id,
+                phaseName: $name,
+                attemptId: $attempt->id,
+                outputReference: $phaseHandle->outputReferenceInternal(),
+            ));
+        } catch (Throwable $e) {
+            $this->recordPhaseError($name, $e);
+            event(new Events\PromptJobPhaseFailed(
+                jobId: $this->job->id,
+                phaseName: $name,
+                attemptId: $attempt->id,
+                errorClass: $e::class,
+                errorMessage: $e->getMessage(),
+            ));
+
+            throw $e;
+        }
+    }
+
+    /**
+     * v0.14.0: phase() と streamingPhase() で共有する commit transaction.
+     * (元々 phase() 内に inline されていたものを切り出し)
+     */
+    private function commitPhase(
+        InternalPromptJobPhase $phaseHandle,
+        string $name,
+        ?Closure $onCommit,
+    ): void {
+        DB::transaction(function () use ($phaseHandle, $name, $onCommit): void {
+            // 1. ownership 再確認
+            $current = PromptJob::query()->lockForUpdate()->find($this->job->id);
+            if ($current === null || $current->owner_token !== $this->ownerToken()) {
+                throw new StaleOwnershipException(
+                    "Ownership lost for job {$this->job->id} during phase '{$name}' commit"
+                );
+            }
+
+            // 2. phase row insert (UNIQUE 重複は例外を起こさせる)
+            $phaseOrder = array_search($name, $this->phaseManifest, true);
+            $phaseRecord = PromptJobPhaseRecord::create([
+                'job_id' => $this->job->id,
+                'phase_name' => $name,
+                'phase_order' => $phaseOrder === false ? 0 : $phaseOrder,
+                'attempt_id' => $phaseHandle->attemptIdInternal(),
+                'output_reference' => $phaseHandle->outputReferenceInternal(),
+                'completed_at' => CarbonImmutable::now(),
+            ]);
+
+            // 3. pending llm_call_log_ids を join table に insert
+            $pendingDirect = $phaseHandle->pendingLlmCallLogIds();
+            $sequence = 1;
+            foreach ($pendingDirect as $logId) {
+                PromptJobPhaseLlmCall::create([
+                    'phase_id' => $phaseRecord->id,
+                    'llm_call_log_id' => $logId,
+                    'sequence' => $sequence++,
+                    'created_at' => CarbonImmutable::now(),
+                ]);
+            }
+
+            // 4. correlation_id 経由を 2 段階解決
+            $logsTable = (string) config('prism-prompt.jobs.llm_call_logs_table', 'llm_call_logs');
+            foreach ($phaseHandle->pendingCorrelationIds() as $cid) {
+                $row = DB::table($logsTable)->where('correlation_id', $cid)->first();
+                if ($row !== null) {
+                    PromptJobPhaseLlmCall::create([
+                        'phase_id' => $phaseRecord->id,
+                        'llm_call_log_id' => (int) $row->id,
+                        'sequence' => $sequence++,
+                        'created_at' => CarbonImmutable::now(),
+                    ]);
+                    PendingLlmCallResolution::create([
+                        'phase_id' => $phaseRecord->id,
+                        'correlation_id' => $cid,
+                        'sequence' => $sequence - 1,
+                        'resolved_at' => CarbonImmutable::now(),
+                        'created_at' => CarbonImmutable::now(),
+                    ]);
+                } else {
+                    PendingLlmCallResolution::create([
+                        'phase_id' => $phaseRecord->id,
+                        'correlation_id' => $cid,
+                        'sequence' => $sequence++,
+                        'resolved_at' => null,
+                        'created_at' => CarbonImmutable::now(),
+                    ]);
+                }
+            }
+
+            // 5. app onCommit
+            if ($onCommit !== null) {
+                $onCommit($phaseHandle);
+            }
+
+            // 6. heartbeat
+            $this->touchHeartbeatInternal();
+        });
     }
 
     /**

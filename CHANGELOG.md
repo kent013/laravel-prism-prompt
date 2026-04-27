@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-04-28
+
+### Added — `streamingPhase()` API for SSE/streaming pipelines inside phase scope
+
+`PromptOperationHandle::streamingPhase()` を追加。`phase()` と異なり body は Generator を
+返し、その yield が caller に forward される。SSE / streaming pipeline を phase scope に
+取り込むための新 API。
+
+#### 修正の背景
+
+v0.13.0 までは `phase()` body 内で `yield` できず、SSE pipeline (Generator) を phase scope
+に取り込めなかった。app 側で「phase は no-op marker、pipeline は phase の外で yield」
+パターンで回避していたが、これは:
+
+- 実 work が lease (heartbeat-aware) の外で走る
+- TTL 切れ / reset で別 owner が takeover した後、旧 owner が message を再永続化できる
+- 監査 (該当 app の comprehensive-audit) で Critical 1 として指摘された構造的問題
+
+#### 使用例
+
+```php
+yield from $handle->streamingPhase('send-message-pipeline', function ($phase) {
+    // SSE event を caller に forward しつつ、phase scope 内で実 work が走る
+    yield from $pipeline->stream();
+});
+$handle->complete();
+```
+
+#### 動作
+
+1. body が Generator を返す
+2. 各 yield 値を caller に forward
+3. body 完了後に commit transaction (phase row insert / llm_call_log 紐付け / heartbeat)
+4. body 内で例外 → recordPhaseError + PromptJobPhaseFailed event 発火
+5. 既に completed な phase は body を呼ばず onSkipped 起動
+
+#### 互換性
+
+- `phase()` API は不変 (内部で commit transaction を共通 helper `commitPhase()` に切り出し)
+- `phase()` 利用 app は無変更で動く
+- `streamingPhase()` 利用は app 側の opt-in
+- migration 不要 (DB schema 不変)
+
+#### Tests
+
+`tests/Operation/PromptOperationTest.php` に 4 件追加:
+- yield forward + commit transaction
+- body が Generator を返さないと TypeError
+- body 内 throw で fail event 発火 + recordPhaseError
+- completed phase スキップ + onSkipped
+
+---
+
 ## [0.13.0] - 2026-04-27
 
 ### Changed — `scope_id` を string 化 (BREAKING for users of v0.12.0)
