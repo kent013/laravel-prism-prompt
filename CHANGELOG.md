@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-04-28
+
+### Fixed — `streamingPhase()` の generic 型を厳格化 (PHPStan 型伝播)
+
+`streamingPhase()` の `@param` / `@return` を `@template TKey, TYield` ベースの generic 化。
+
+#### 修正の背景
+
+v0.14.0 のシグネチャは `Closure(...): \Generator<mixed, mixed, mixed, mixed>` /
+`@return \Generator<mixed, mixed, mixed, mixed>` と loose だったため、app 側で
+`\Generator<int, array{event: string, data: array<string, mixed>}>` のような厳格な戻り値型を
+持つ method 内で `yield from $handle->streamingPhase(...)` を書くと PHPStan が
+`generator.keyType` / `generator.valueType` エラーを出していた。
+
+#### 動作
+
+- `body` の yield 型 (`TKey`, `TYield`) を `@template` で取り出し、`@return` に伝播
+- 既存の v0.14.0 利用箇所は変更不要 (シグネチャ互換)
+
+#### Migration
+
+```php
+// Before (PHPStan で yield from の戻り値が mixed 扱い)
+yield from $handle->streamingPhase('phase', function () {
+    yield ['event' => 'x', 'data' => []];
+});
+
+// After (yield 型が body から推論され caller の Generator 型と整合)
+// → app 側コード変更不要
+```
+
 ## [0.14.0] - 2026-04-28
 
 ### Added — `streamingPhase()` API for SSE/streaming pipelines inside phase scope

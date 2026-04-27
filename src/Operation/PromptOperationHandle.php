@@ -144,10 +144,18 @@ final class PromptOperationHandle
      * });
      * ```
      *
-     * @param  Closure(PromptJobPhase): \Generator<mixed, mixed, mixed, mixed>  $body
+     * v0.14.1: PHPStan generic 型 (`@template`) を導入し、body の yield 型を caller の
+     * `yield from` 結果へ正確に伝播させる。これにより app 側で
+     * `\Generator<int, array{event: string, data: array<string, mixed>}>` のような
+     * 厳格な戻り値を持つ method 内で `yield from streamingPhase(...)` が型安全になる。
+     *
+     * @template TKey
+     * @template TYield
+     *
+     * @param  Closure(PromptJobPhase): \Generator<TKey, TYield, mixed, mixed>  $body
      * @param  null|Closure(CompletedPhaseRecord): void  $onSkipped
      * @param  null|Closure(PromptJobPhase): void  $onCommit
-     * @return \Generator<mixed, mixed, mixed, mixed>
+     * @return \Generator<TKey, TYield, mixed, mixed>
      */
     public function streamingPhase(
         string $name,
