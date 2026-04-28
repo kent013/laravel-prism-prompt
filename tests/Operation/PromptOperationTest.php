@@ -291,7 +291,7 @@ test('v0.14.0 streamingPhase: body が Generator を返さないと TypeError', 
             // not a generator (no yield)
         }) as $_) {
         }
-    } catch (\TypeError $e) {
+    } catch (TypeError $e) {
         $caught = $e;
     }
     expect($caught)->not->toBeNull()
@@ -310,10 +310,10 @@ test('v0.14.0 streamingPhase: body 内 throw で fail event 発火 + recordPhase
     try {
         foreach ($handle->streamingPhase('phase-a', function () {
             yield 'event-1';
-            throw new \RuntimeException('boom');
+            throw new RuntimeException('boom');
         }) as $_) {
         }
-    } catch (\RuntimeException $e) {
+    } catch (RuntimeException $e) {
         $caught = $e;
     }
     expect($caught?->getMessage())->toBe('boom');

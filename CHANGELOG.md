@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.6] - 2026-04-28
+
+### Style — PHP-CS-Fixer auto-fix carry-over
+
+`examples/12-bundle-pipeline.php` と `tests/Operation/{OperationTestCase,PromptOperationTest}.php`
+に残っていた PHP-CS-Fixer 系の style 違反を解消した。
+
+#### 変更内容
+
+- `tests/Operation/OperationTestCase.php`: `\Illuminate\Database\Eloquent\Concerns\HasUlids`
+  を inline FQN ではなく top の `use` 宣言に統一
+- `tests/Operation/PromptOperationTest.php`: `\TypeError` / `\RuntimeException` の
+  inline backslash 表記をグローバル名前空間直書きに統一 (このファイルは namespace 無し)
+- `examples/12-bundle-pipeline.php`: 補間を含まない double quote 文字列を
+  single quote に統一
+
+#### 動作
+
+- 動作互換 (公開 API / event / DB schema 変更なし)
+- v0.14.5 利用 app は無変更で動く
+
+#### Migration
+
+不要 (style cleanup のみ)。
+
 ## [0.14.5] - 2026-04-28
 
 ### Changed — examples を全て英語化

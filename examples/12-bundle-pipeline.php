@@ -230,7 +230,7 @@ $result = $pipeline->handle(
     npcName: 'Director Tanaka',
     npcRole: 'Director at a manufacturing company (50s, male)',
     history: [
-        ['role' => 'user', 'body' => "Nice to meet you, thank you for your time."],
+        ['role' => 'user', 'body' => 'Nice to meet you, thank you for your time.'],
         ['role' => 'assistant', 'body' => "Likewise. Let's get straight into it."],
     ],
     rawUserMessage: 'May I start by asking about the challenges your company is currently facing?',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kent013\PrismPrompt\Tests\Operation;
 
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Kent013\PrismPrompt\Tests\TestCase;
@@ -72,7 +73,7 @@ class FakeScope extends Model
 
 class FakeUlidScope extends Model
 {
-    use \Illuminate\Database\Eloquent\Concerns\HasUlids;
+    use HasUlids;
 
     protected $table = 'fake_ulid_scopes';
 
