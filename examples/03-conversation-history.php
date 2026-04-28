@@ -1,17 +1,16 @@
 <?php
 
 /**
- * Example 3: Conversation History - 会話履歴を Message 配列で送信
+ * Example 3: Conversation History — send chat history as native messages
  *
- * buildConversationMessages() をオーバーライドして、
- * 過去の会話履歴を UserMessage / AssistantMessage として送信するパターン。
+ * Override `buildConversationMessages()` to dispatch past turns as
+ * `UserMessage` / `AssistantMessage` instead of one big concatenated
+ * string. The LLM understands native message arrays better than a
+ * stringified transcript.
  *
- * これにより LLM はネイティブな会話コンテキストとして履歴を理解できます。
- * （テキスト連結で渡すよりも精度が高い）
- *
- * system_prompt (YAML) → SystemMessage  … 役割設定・制約
- * 会話履歴 (PHP)       → UserMessage / AssistantMessage の交互配列
- * 最新の入力 (PHP)     → UserMessage   … 末尾に配置（必須）
+ * system_prompt (YAML)   → SystemMessage     ... role / constraints
+ * History (PHP)          → UserMessage / AssistantMessage interleaved
+ * Latest user turn (PHP) → UserMessage      ... must be last
  */
 
 declare(strict_types=1);
@@ -21,7 +20,7 @@ use Prism\Prism\Contracts\Message;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 
-// ── メッセージ履歴の型 ──────────────────────────────
+// ── Message history type ───────────────────────────
 
 class ChatMessage
 {
@@ -31,7 +30,7 @@ class ChatMessage
     ) {}
 }
 
-// ── Prompt クラス ────────────────────────────────────
+// ── Prompt subclass ────────────────────────────────
 
 /**
  * @extends Prompt<string>
@@ -53,7 +52,7 @@ class ChatResponsePrompt extends Prompt
     }
 
     /**
-     * 会話履歴を Prism Message 配列に変換
+     * Convert history into a Prism message array.
      *
      * @return array<int, Message>
      */
@@ -61,7 +60,7 @@ class ChatResponsePrompt extends Prompt
     {
         $messages = [];
 
-        // 過去の会話履歴を UserMessage / AssistantMessage に変換
+        // Past turns become alternating UserMessage / AssistantMessage.
         foreach ($this->history as $msg) {
             $messages[] = match ($msg->role) {
                 'user' => new UserMessage($msg->content),
@@ -69,7 +68,7 @@ class ChatResponsePrompt extends Prompt
             };
         }
 
-        // 最新のユーザー入力（必ず末尾に UserMessage）
+        // The latest user turn must always be the last UserMessage.
         $messages[] = new UserMessage($this->userMessage);
 
         return $messages;
@@ -81,7 +80,7 @@ class ChatResponsePrompt extends Prompt
     }
 }
 
-// ── YAML テンプレート ──────────────────────────────
+// ── YAML template ──────────────────────────────────
 // resources/prompts/chat_response.yaml
 //
 // name: chat_response
@@ -91,33 +90,33 @@ class ChatResponsePrompt extends Prompt
 // temperature: 0.7
 //
 // system_prompt: |
-//   あなたはカスタマーサポートのアシスタントです。
-//   丁寧かつ簡潔に回答してください。
-//   技術的な質問には具体的な手順を示してください。
+//   You are a customer support assistant.
+//   Reply politely and concisely.
+//   Provide concrete steps for technical questions.
 //
 // prompt: |
 //   {{ $userMessage }}
 //
-// ── 送信されるメッセージ（3ターン目の場合）──────────
-// | #  | Role             | Content                    |
-// |----|------------------|----------------------------|
-// | 0  | SystemMessage    | あなたはカスタマーサポート...  |
-// | 1  | UserMessage      | パスワードを忘れました       |
-// | 2  | AssistantMessage | パスワードリセット手順...     |
-// | 3  | UserMessage      | メールが届きません           |
-// | 4  | AssistantMessage | 迷惑メールフォルダを...       |
-// | 5  | UserMessage      | 確認しましたが見つかりません   |
+// ── Messages sent to the LLM (3rd turn shown) ─────
+// | #  | Role             | Content                              |
+// |----|------------------|--------------------------------------|
+// | 0  | SystemMessage    | You are a customer support assistant.|
+// | 1  | UserMessage      | I forgot my password                 |
+// | 2  | AssistantMessage | Here are the password reset steps... |
+// | 3  | UserMessage      | The email isn't arriving             |
+// | 4  | AssistantMessage | Please check your spam folder...     |
+// | 5  | UserMessage      | I checked but I can't find it        |
 //
-// ※ buildConversationMessages() の返り値がそのまま
-//   SystemMessage の後に配置される
+// The buildConversationMessages() return value is placed right after
+// the SystemMessage.
 
 $response = (new ChatResponsePrompt(
-    userMessage: '確認しましたが見つかりません',
+    userMessage: "I checked but I can't find it",
     history: [
-        new ChatMessage('user', 'パスワードを忘れました'),
-        new ChatMessage('assistant', 'パスワードリセットの手順をご案内します。ログイン画面の「パスワードを忘れた方」をクリックしてください。'),
-        new ChatMessage('user', 'メールが届きません'),
-        new ChatMessage('assistant', '迷惑メールフォルダをご確認ください。また、登録メールアドレスが正しいかご確認ください。'),
+        new ChatMessage('user', 'I forgot my password'),
+        new ChatMessage('assistant', 'Let me walk you through the password reset. Click "Forgot password" on the login screen and we will email a reset link.'),
+        new ChatMessage('user', "The email isn't arriving"),
+        new ChatMessage('assistant', 'Please check your spam folder and double-check the email address you registered with.'),
     ],
 ))->executeSync();
 

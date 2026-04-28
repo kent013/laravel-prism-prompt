@@ -1,20 +1,20 @@
 <?php
 
 /**
- * Example 2: JSON DTO - サブクラスで構造化レスポンスを取得
+ * Example 2: JSON DTO — structured response via subclass
  *
- * system_prompt にJSON出力形式を指示し、
- * parseResponse() で extractJson → DTO マッピングを行うパターン。
+ * Instruct the LLM to emit JSON in `system_prompt`, then parse it into a
+ * typed DTO inside `parseResponse()` using `extractJson()`.
  *
- * system_prompt: 役割定義 + 出力形式の指示
- * prompt:        動的データ（会話履歴、進捗など）
+ * system_prompt: role definition + output schema
+ * prompt:        dynamic data (conversation, progress, ...)
  */
 
 declare(strict_types=1);
 
 use Kent013\PrismPrompt\Prompt;
 
-// ── DTO ──────────────────────────────────────────────
+// ── DTO ────────────────────────────────────────────
 
 class HintResponseDto
 {
@@ -36,7 +36,7 @@ class HintResponseDto
     }
 }
 
-// ── Prompt クラス ────────────────────────────────────
+// ── Prompt subclass ────────────────────────────────
 
 /**
  * @extends Prompt<HintResponseDto>
@@ -45,8 +45,8 @@ class HintGenerationPrompt extends Prompt
 {
     protected string $promptsDirectory = 'training';
 
-    // YAML は resources/prompts/training/hint_generation.yaml に配置
-    // naming convention: HintGenerationPrompt → hint_generation.yaml
+    // YAML lives at resources/prompts/training/hint_generation.yaml
+    // Naming convention: HintGenerationPrompt → hint_generation.yaml
 
     public function __construct(
         public readonly string $conversationText,
@@ -65,7 +65,7 @@ class HintGenerationPrompt extends Prompt
     }
 }
 
-// ── YAML テンプレート ──────────────────────────────
+// ── YAML template ──────────────────────────────────
 // resources/prompts/training/hint_generation.yaml
 //
 // name: hint_generation
@@ -75,46 +75,47 @@ class HintGenerationPrompt extends Prompt
 // temperature: 0.9
 //
 // system_prompt: |
-//   あなたは学習者が次に質問すべき内容のヒントを生成する役割です。
-//   会話履歴と進捗状況から、適切なヒントと具体的な質問例を提示してください。
+//   You generate hints suggesting what the trainee should ask next.
+//   Read the conversation history and progress, then return a useful
+//   hint plus concrete example questions.
 //
-//   # 出力形式（JSON）
+//   # Output format (JSON)
 //   {
-//     "hint": "次に確認すべき内容のヒント（50文字以内）",
+//     "hint": "Hint pointing at the next thing to clarify (<= 50 chars)",
 //     "examples": [
-//       "具体的な質問例1",
-//       "具体的な質問例2",
-//       "具体的な質問例3"
+//       "Concrete example question 1",
+//       "Concrete example question 2",
+//       "Concrete example question 3"
 //     ]
 //   }
 //
 // prompt: |
-//   # 会話履歴（直近20件）
+//   # Conversation history (latest 20 turns)
 //   {{ $conversationText }}
 //
-//   # 現在の進捗状況
+//   # Current progress
 //   {{ $progressText }}
 //
-//   # 最新のNPC発言
+//   # Latest NPC utterance
 //   {{ $latestNpcMessage }}
 //
-//   # タスク
-//   上記の会話履歴と進捗状況から、学習者が次に質問すべき内容のヒントを生成してください。
+//   # Task
+//   Generate a hint suggesting what the trainee should ask about next.
 //
-// ── 送信されるメッセージ ──────────────────────────────
-// | Role          | Content                                     |
-// |---------------|---------------------------------------------|
-// | SystemMessage | あなたは学習者が...出力形式（JSON）{...}       |
-// | UserMessage   | # 会話履歴\nトレーニー: ...# タスク\n...      |
+// ── Messages sent to the LLM ───────────────────────
+// | Role          | Content                                                |
+// |---------------|--------------------------------------------------------|
+// | SystemMessage | You generate hints ... # Output format (JSON) {...}    |
+// | UserMessage   | # Conversation history\nTrainee: ...\n# Task\n...      |
 
 $hint = (new HintGenerationPrompt(
-    conversationText: "トレーニー: 現在のシステム構成を教えてください\nNPC: 現在はオンプレミスのサーバーで運用しています",
-    progressText: "確認済み:\n- 現行システムの概要 (100%)\n\n未確認:\n- 移行要件 (0%)\n- スケジュール (0%)",
-    latestNpcMessage: '現在はオンプレミスのサーバーで運用しています',
+    conversationText: "Trainee: Could you describe your current system?\nNPC: We run on-prem.",
+    progressText: "Confirmed:\n- Current system overview (100%)\n\nUnconfirmed:\n- Migration requirements (0%)\n- Schedule (0%)",
+    latestNpcMessage: 'We run on-prem.',
 ))->executeSync();
 
-// $hint は HintResponseDto
-echo $hint->hint; // "移行要件について確認しましょう"
+// $hint is a HintResponseDto
+echo $hint->hint; // "Drill into the migration requirements"
 foreach ($hint->examples as $example) {
     echo "- {$example}\n";
 }

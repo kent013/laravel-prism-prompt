@@ -1,25 +1,32 @@
 <?php
 
 /**
- * Example 12: 複数 Prompt のパイプライン
+ * Example 12: Multi-prompt pipeline
  *
- * 1 つのユーザー操作を複数の LLM 呼び出しでさばく現実的な例。
+ * A realistic example of one user-facing operation that fans out into
+ * several LLM calls.
  *
- * シナリオ: ロールプレイ訓練アプリで「学習者の発言を 1 ターン処理する」
- * というユースケース。1 つのリクエストで以下を順に走らせる:
+ * Scenario: a role-play training app processing one trainee turn. A
+ * single request runs three calls back to back:
  *
- *   1. NPC 応答生成   (GenerateNpcResponsePrompt) — 学習者発言に対する NPC の返答
- *   2. 発言評価       (EvaluateUserMessagePrompt) — 学習者発言を rubric で採点
- *   3. ヒント生成     (GenerateHintPrompt)        — 学習者の次の一手のヒント
+ *   1. Generate the NPC reply  (GenerateNpcResponsePrompt) — natural
+ *      response to the trainee's last utterance.
+ *   2. Evaluate the trainee    (EvaluateUserMessagePrompt) — score the
+ *      trainee's utterance against a rubric.
+ *   3. Generate the next hint  (GenerateHintPrompt) — what the trainee
+ *      should ask next.
  *
- * 全てに共通する基盤要素:
- *   - withMetadata() でテナント / 訓練セッションを listener に渡す
- *   - UserInput でユーザー発言を wrap (Prompt injection 防御)
- *   - 各 Prompt は独立した YAML を持ち、独立した DTO を返す
+ * Shared infrastructure for all three:
+ *   - withMetadata() so the listener can attribute calls to the tenant
+ *     and training session.
+ *   - UserInput wrapping the trainee's utterance (prompt-injection
+ *     defence).
+ *   - One YAML and one DTO per Prompt — they stay independent.
  *
- * ⚠ この例は順次実行版。共通コンテキストが大きい場合は Example 09 の
- *    PromptPool を検討すること (今回は 3 本中 1 本が plain text 応答で
- *    DTO が違うため pool しない、というのも妥当な判断)。
+ * ⚠ This example runs sequentially. If the shared context is large you
+ *    may want PromptPool from Example 09 instead. Here we don't pool
+ *    because one of the three calls returns plain text and the DTOs
+ *    differ — so sequential is the appropriate choice.
  */
 
 declare(strict_types=1);
@@ -27,7 +34,7 @@ declare(strict_types=1);
 use Kent013\PrismPrompt\Prompt;
 use Kent013\PrismPrompt\Values\UserInput;
 
-// ── DTO ────────────────────────────────────────────
+// ── DTOs ───────────────────────────────────────────
 
 class EvaluateUserMessageDto
 {
@@ -65,7 +72,7 @@ final class GenerateNpcResponsePrompt extends Prompt
 
     protected function parseResponse(string $text): string
     {
-        return trim($text);  // NPC 発言は plain text (1-3 文)
+        return trim($text);  // NPC utterances are plain text (1-3 sentences).
     }
 }
 
@@ -119,7 +126,7 @@ final class GenerateHintPrompt extends Prompt
 }
 
 // ════════════════════════════════════════════════════
-// パイプライン本体
+// Pipeline
 // ════════════════════════════════════════════════════
 
 class TrainingTurnPipeline
@@ -130,7 +137,7 @@ class TrainingTurnPipeline
     ) {}
 
     /**
-     * @param  list<array{role: string, body: string}>  $history  会話履歴 (新しい順)
+     * @param  list<array{role: string, body: string}>  $history  newest-first conversation history
      */
     public function handle(
         string $npcName,
@@ -148,7 +155,7 @@ class TrainingTurnPipeline
             'subject_id' => $this->sessionId,
         ];
 
-        // ── 1. NPC 応答生成 ──────────────────────────
+        // ── 1. NPC reply ────────────────────────────
         $npcReply = (new GenerateNpcResponsePrompt(
             npcName: $npcName,
             npcRole: $npcRole,
@@ -158,7 +165,7 @@ class TrainingTurnPipeline
             ->withMetadata($metadata + ['stage' => 'generate_npc_response'])
             ->executeSync();
 
-        // ── 2. 学習者発言の評価 ─────────────────────
+        // ── 2. Score the trainee ────────────────────
         $evaluation = (new EvaluateUserMessagePrompt(
             npcName: $npcName,
             npcRole: $npcRole,
@@ -168,7 +175,7 @@ class TrainingTurnPipeline
             ->withMetadata($metadata + ['stage' => 'evaluate_user_message'])
             ->executeSync();
 
-        // ── 3. 次のヒント生成 ─ NPC 応答後の状態で履歴を組み直す ──
+        // ── 3. Hint — rebuild history with the new NPC reply included
         $extendedHistory = [
             ['role' => 'user', 'body' => $rawUserMessage],
             ['role' => 'assistant', 'body' => $npcReply],
@@ -193,8 +200,8 @@ class TrainingTurnPipeline
     /** @param list<array{role: string, body: string}> $history */
     private function formatHistory(array $history): string
     {
-        // 注: 実プロダクションでは ConversationContextBuilder のような
-        //     UserInput-aware なヘルパーで組み立てる (Example 11 参照)。
+        // Note: in production prefer a UserInput-aware helper such as
+        // ConversationContextBuilder (see Example 11 for the pattern).
         return collect($history)
             ->map(fn (array $h) => "{$h['role']}: {$h['body']}")
             ->implode("\n");
@@ -211,7 +218,7 @@ class TrainingTurnResultDto
 }
 
 // ════════════════════════════════════════════════════
-// 利用例
+// Usage
 // ════════════════════════════════════════════════════
 
 $pipeline = new TrainingTurnPipeline(
@@ -220,33 +227,33 @@ $pipeline = new TrainingTurnPipeline(
 );
 
 $result = $pipeline->handle(
-    npcName: '田中部長',
-    npcRole: '製造業の取締役 (50代男性)',
+    npcName: 'Director Tanaka',
+    npcRole: 'Director at a manufacturing company (50s, male)',
     history: [
-        ['role' => 'user', 'body' => 'はじめまして、お時間ありがとうございます'],
-        ['role' => 'assistant', 'body' => 'こちらこそ。早速本題に入ろうか'],
+        ['role' => 'user', 'body' => "Nice to meet you, thank you for your time."],
+        ['role' => 'assistant', 'body' => "Likewise. Let's get straight into it."],
     ],
-    rawUserMessage: 'まず御社の現状の課題からお伺いしてよろしいでしょうか',
-    progressText: "確認済み:\n- 自己紹介 (100%)\n\n未確認:\n- 現状課題 (0%)\n- 予算 (0%)",
+    rawUserMessage: 'May I start by asking about the challenges your company is currently facing?',
+    progressText: "Confirmed:\n- Introductions (100%)\n\nUnconfirmed:\n- Current challenges (0%)\n- Budget (0%)",
 );
 
-echo $result->npcReply;            // string (NPC が返す自然な発言)
+echo $result->npcReply;            // string — natural NPC utterance
 echo $result->evaluation->score;   // int 1-5
-echo $result->hint->hint;          // string (次の質問のヒント)
+echo $result->hint->hint;          // string — hint about what to ask next
 foreach ($result->hint->examples as $example) {
     echo "- {$example}\n";
 }
 
 // ════════════════════════════════════════════════════
-// 設計上のポイント
+// Design notes
 // ════════════════════════════════════════════════════
 //
-// 1. 各 Prompt は独立した責務 / 独立した YAML / 独立した DTO を持つ。
-//    入力を Prompt サブクラスで型として受けるので、誤った変数を渡すと
-//    型エラーで早期に死ぬ (YAML 文字列展開で silent に消えない)。
+// 1. Each Prompt owns one responsibility, one YAML, one DTO. Inputs are
+//    typed via the constructor so wrong variables fail at type-check
+//    time instead of silently producing an empty {{ $var }} expansion.
 //
-// 2. withMetadata に 'stage' を付けておくと PromptExecutionCompleted listener
-//     側で「どの段階の LLM call か」をコスト集計できる:
+// 2. With a 'stage' field in metadata, the PromptExecutionCompleted
+//    listener can split costs per stage:
 //
 //        Event::listen(PromptExecutionCompleted::class, function ($e) {
 //            DB::table('llm_call_logs')->insert([
@@ -259,12 +266,15 @@ foreach ($result->hint->examples as $example) {
 //            ]);
 //        });
 //
-// 3. 1 ターンで 3 回 LLM を叩くので、各 Prompt の model を最適化する:
-//    - NPC 応答生成: 自然さ重視 → claude-sonnet
-//    - 評価:        構造化応答だけ → claude-haiku で十分 (安価高速)
-//    - ヒント:      構造化応答だけ → claude-haiku
-//    YAML を分けてあるので model を別個に変えられる。
+// 3. Three LLM calls per turn means model selection matters. Tune each
+//    YAML to the appropriate model:
+//      - NPC reply:  natural-feeling text → claude-sonnet
+//      - Evaluation: structured response → claude-haiku is enough
+//      - Hint:       structured response → claude-haiku
+//    Separate YAML files make per-stage tuning trivial.
 //
-// 4. 中間で例外が出た場合の補償処理 (NPC 応答は保存したのに評価で失敗した
-//    場合の整合性) が要件次第で重くなる。データベース整合性が要件なら
-//    Example 07 の PromptOperation で phase を切ってチェックポイント化する。
+// 4. Compensation across partial failures (e.g. NPC reply persisted but
+//    the evaluation call failed) gets heavy depending on your
+//    consistency requirements. If you need transactional integrity,
+//    wrap the whole thing in a PromptOperation (see Example 07) and
+//    split it into checkpointed phases.

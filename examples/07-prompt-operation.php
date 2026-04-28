@@ -5,21 +5,24 @@ declare(strict_types=1);
 /**
  * Example 07: PromptOperation (durable LLM operation coordinator)
  *
- * `PromptOperation` は LLM 呼び出しを含む operation を妨害 (リロード / LLM 失敗 /
- * プロセスクラッシュ / 2 タブ並行) に対して堅牢化するための job coordinator。
- * `Prompt` クラスは無変更で使い、Operation で wrap するだけで以下が得られる:
+ * `PromptOperation` makes an operation that includes one or more LLM
+ * calls robust against interruptions: page reload, LLM error, process
+ * crash, two-tab race. The base `Prompt` class is unchanged — wrap the
+ * call in `PromptOperation` and you get:
  *
- * - 同一入力 (scope + operation_name + idempotency_key) は 1 つの Job として束ねる
- * - 2 つ目以降の呼び出しは SameOperationFollower として既存 Job を follow
- * - phase 単位で完了マーカーを残し、次回呼び出しは未完了 phase のみ再実行
- * - heartbeat TTL 切れで stale 判定 → 別プロセスが claim 引き継ぎ
- * - phase ↔ llm_call_log の N:N 紐付けで監査トレース
+ * - One job per `(scope + operation_name + idempotency_key)` tuple,
+ *   second-and-later requests join as `SameOperationFollower`.
+ * - Per-phase completion markers — re-running a partial operation skips
+ *   already-finished phases.
+ * - Heartbeat TTL — stale ownership is detected so another process can
+ *   take over.
+ * - Phase ↔ `llm_call_log` N:N association for audit traces.
  *
- * このサンプルは training アプリの "initial-message" operation を想定:
- * 1. facilitator NPC の冒頭メッセージ生成 (LLM call 1 回)
- * 2. 進捗ガイドの初期評価 (LLM call 1 回)
+ * The example below models a training app's "initial-message" operation:
+ * 1. Generate the facilitator NPC's opening message (1 LLM call).
+ * 2. Run the initial progress-guide evaluation (1 LLM call).
  *
- * 各 phase で Prompt を呼び、結果を draft で永続化 → onCommit で active に promote。
+ * Each phase persists a draft, and `onCommit` promotes draft → active.
  */
 
 use App\Models\Training\TrainingSessionMessage;
@@ -39,7 +42,7 @@ use Kent013\PrismPrompt\Operation\PromptOperationHandle;
 use Kent013\PrismPrompt\Operation\SameOperationFollower;
 use Kent013\PrismPrompt\Operation\WaitResult;
 
-// app 側の domain model (UserScenarioProgress 等)
+// Application domain model (UserScenarioProgress, etc.)
 $progress = UserScenarioProgress::find(7);
 
 for ($attempt = 0; $attempt < 3; $attempt++) {
@@ -53,7 +56,7 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
         $handle = $claim->handle();
 
         try {
-            // Phase 1: 冒頭メッセージ生成
+            // Phase 1: generate the opening message
             $handle->phase(
                 'generate-initial-message',
                 body: function (PromptJobPhase $phase) use ($handle, $progress): void {
@@ -66,11 +69,12 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
                         ->withMetadata($metadata)
                         ->executeSync();
 
-                    // event listener が llm_call_logs に correlation_id 付きで記録するので
-                    // ここでは correlation_id を pending に登録 (2 段階解決)
+                    // The event listener writes correlation_id into
+                    // llm_call_logs; here we register the correlation_id
+                    // as pending (two-step resolution).
                     $phase->attachLlmCallByCorrelationId($metadata['correlation_id']);
 
-                    // 副作用永続化: draft で書き込む
+                    // Persist the side effect as a draft row.
                     $message = TrainingSessionMessage::create([
                         'user_scenario_progress_id' => $progress->id,
                         'job_id' => $handle->job()->id,
@@ -83,7 +87,8 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
                     $phase->setOutputReference("message:{$message->id}");
                 },
                 onCommit: function (PromptJobPhase $phase) use ($progress): void {
-                    // Phase 完了 transaction 内で draft → active promote
+                    // Inside the phase-completion transaction:
+                    // demote any current active row, promote this draft.
                     TrainingSessionMessage::query()
                         ->where('user_scenario_progress_id', $progress->id)
                         ->where('visibility', 'active')
@@ -95,26 +100,26 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
                         ->update(['visibility' => 'active']);
                 },
                 onSkipped: function (): void {
-                    // 既に Phase 1 が完了していた場合 (再開時)。状態を再ロードする
-                    // ここでは何もしないが、必要なら $messages を context にロードする
+                    // Phase 1 has already finished (resume case).
+                    // Reload state into context here if you need it; no-op for now.
                 },
             );
 
-            // Phase 2: 進捗ガイド評価
+            // Phase 2: progress-guide evaluation
             $handle->phase('analyze-progress', function (PromptJobPhase $phase): void {
                 $response = (new AnalyzeProgressPrompt)
                     ->withMetadata($phase->metadata()->correlationIdFromPhase()->toArguments())
                     ->executeSync();
                 $phase->attachLlmCallByCorrelationId($phase->metadata()->correlationIdFromPhase()->toArguments()['correlation_id']);
-                // ... 永続化 ...
+                // ... persist ...
             });
 
-            // 全 phase 完了 → status='completed' + credit commit
+            // All phases done → status='completed' + commit credits.
             $handle->complete(onCommit: function (PromptOperationHandle $h): void {
                 app(TrainingCreditService::class)->commitOperation($h);
             });
 
-            // SSE で永続化済 messages を replay する等 (省略)
+            // Replay persisted messages over SSE etc. (omitted)
         } catch (Throwable $e) {
             $handle->fail($e, onFail: function (PromptOperationHandle $h): void {
                 app(TrainingCreditService::class)->releaseOperation($h);
@@ -127,43 +132,44 @@ for ($attempt = 0; $attempt < 3; $attempt++) {
     }
 
     if ($claim instanceof SameOperationFollower) {
-        // 別リクエストが既に owner として処理中。完了を polling で待つ
+        // Another request already owns this operation. Poll for completion.
         $result = $claim->handle()->follow();
         if ($result->isCompleted()) {
-            // 永続化済み messages を読み出して SSE replay
+            // Read the persisted messages and replay over SSE.
             break;
         }
         if ($result->isStale()) {
-            // owner が heartbeat 切れ → 上位ループで claim 試行
+            // Owner missed its heartbeat — try to claim it ourselves.
             continue;
         }
         if ($result->isFailed() || $result->isCancelled() || $result->isTimeout()) {
-            // エラー event を返す
+            // Return the appropriate error event.
             break;
         }
     }
 
     if ($claim instanceof BlockedBySerialization) {
-        // 同 scope の別 operation (例: send-message) が走っている。lock 解放を待つ
+        // Another operation in the same scope is running (e.g. send-message).
+        // Wait for the lock to be released.
         $waitResult = $claim->waitForLockRelease(90);
         if ($waitResult === WaitResult::Timeout) {
-            // 諦めて 425 Too Early 等を返す
+            // Give up and return e.g. 425 Too Early.
             break;
         }
 
-        continue;  // 解放 → 自分の Job claim を再試行
+        continue;  // Released → retry our own claim.
     }
 
     if ($claim instanceof AlreadyCompleted) {
-        // 既に過去の試行で完了している。永続化済み messages を replay
+        // A previous attempt already completed. Replay persisted messages.
         break;
     }
     if ($claim instanceof AlreadyFailed) {
-        // 過去試行が失敗 + retryFailed=false の場合。エラー返却
+        // Previous attempt failed and retryFailed=false. Return the error.
         break;
     }
     if ($claim instanceof AlreadyCancelled) {
-        // 明示キャンセル済み
+        // Explicitly cancelled.
         break;
     }
 }

@@ -3,18 +3,18 @@
 /**
  * Example 5: Events & Cost Calculation
  *
- * v0.7 / v0.8 で追加された Event 駆動のフックと、
- * 自動的に計算される USD コスト情報を利用するパターン。
+ * Event-driven hooks (added in v0.7) plus the USD cost information
+ * (added in v0.8) computed automatically per call.
  *
- * - Prompt::executeSync() は PromptExecutionCompleted / PromptExecutionFailed を
- *   Laravel イベントとして dispatch する
- * - withMetadata() で呼び出し側の文脈（テナント ID、Evaluation ID 等）を
- *   そのまま event へ流し込める
- * - event->cost は CostCalculation?（USD スカラー + PricingSnapshot）
- *   — pricing 表（config/prism-prompt-pricing.php）から自動計算される
+ * - `Prompt::executeSync()` dispatches `PromptExecutionCompleted` /
+ *   `PromptExecutionFailed` Laravel events.
+ * - `withMetadata()` lets callers attach arbitrary domain context
+ *   (tenant id, evaluation id, ...) that flows verbatim into the event.
+ * - `$event->cost` is a `CostCalculation?` (USD scalars + a
+ *   `PricingSnapshot`), resolved from `config/prism-prompt-pricing.php`.
  *
- * ＊ FX 変換（USD→JPY 等）と DB 永続化は意図的に package 側では行わない。
- *    自分の ListenerServiceProvider で配線する。
+ * ⚠ FX conversion (USD → JPY etc.) and database persistence are
+ *    deliberately out of scope; wire those up in your own listener.
  */
 
 declare(strict_types=1);
@@ -26,32 +26,33 @@ use Kent013\PrismPrompt\Events\PromptExecutionFailed;
 use Kent013\PrismPrompt\Prompt;
 
 // ════════════════════════════════════════════════════
-// Scenario A: 呼び出し側で context を付与
+// Scenario A: Caller attaches context
 // ════════════════════════════════════════════════════
 
 $result = Prompt::load('greeting', ['userName' => 'Alice'])
     ->withMetadata([
-        // どんな key でも OK — 自作 Listener で読む
+        // Any keys you like — your own listener reads them.
         'organization_id' => 42,
         'subject_type' => 'App\\Models\\Evaluation',
         'subject_id' => 1,
         'feature' => 'onboarding_greeting',
     ])
     ->executeSync();
-// $result は通常どおり parseResponse() の戻り値（この場合は raw text）
+// $result is whatever parseResponse() returns (raw text in this case).
 
 // ════════════════════════════════════════════════════
-// Scenario B: 成功 event を受けてコストを記録
+// Scenario B: Record cost on success
 // ════════════════════════════════════════════════════
 
 Event::listen(PromptExecutionCompleted::class, function (PromptExecutionCompleted $event): void {
-    // event に載っている cost は「pricing が解決できたか」で 2 通りある
+    // $event->cost has two distinct null-vs-not-null meanings.
     $cost = $event->cost;
 
     if ($cost === null) {
-        // *** 障害兆候 ***: pricing resolution が内部で throw したケース。
-        // unknown model の zero-cost ケースは null ではなく snapshot.source='unknown_model:...'
-        // で返るので、この null は本当の異常だけを意味する。
+        // *** Failure signal *** — pricing resolution threw unexpectedly.
+        // Unknown-model fall-through is *not* null; it returns a
+        // snapshot with source='unknown_model:...' and a zero total.
+        // So a null here means something is genuinely wrong upstream.
         Log::warning('llm_cost_resolution_failed', [
             'execution_id' => $event->executionId,
             'provider' => $event->provider,
@@ -61,16 +62,16 @@ Event::listen(PromptExecutionCompleted::class, function (PromptExecutionComplete
         return;
     }
 
-    // 通常経路: USD スカラー + PricingSnapshot をそのまま使える
+    // Happy path — USD scalars + a PricingSnapshot.
     //
     //   inputCostUsd       float
     //   outputCostUsd      float
-    //   cacheWriteCostUsd  ?float  (モデルに cache 価格がなければ null)
+    //   cacheWriteCostUsd  ?float  (null if the model has no cache pricing)
     //   cacheReadCostUsd   ?float
     //   totalCostUsd       float
     //   snapshot           PricingSnapshot  (Arrayable)
     //
-    // 例: アプリ側の llm_call_logs テーブルに書き出す
+    // Persist into your own llm_call_logs table:
     DB::table('llm_call_logs')->insert([
         'execution_id' => $event->executionId,
         'organization_id' => $event->metadata['organization_id'] ?? null,
@@ -80,25 +81,25 @@ Event::listen(PromptExecutionCompleted::class, function (PromptExecutionComplete
         'model' => $event->model,
         'input_tokens' => $event->totalUsage->promptTokens,
         'output_tokens' => $event->totalUsage->completionTokens,
-        // DECIMAL(12,6) カラム想定で half-up 丸め
+        // DECIMAL(12,6) column with half-up rounding.
         'total_cost_usd' => number_format($cost->totalCostUsd, 6, '.', ''),
-        // JSON カラム — PricingSnapshot は Arrayable なのでそのまま
+        // JSON column — PricingSnapshot is Arrayable.
         'pricing_snapshot' => json_encode($cost->snapshot->toArray()),
         'duration_ms' => (int) round($event->durationMs),
         'created_at' => now(),
     ]);
 
-    // 非 USD（例: JPY）が必要ならここで自分の FX サービスを呼ぶ
-    // ー package 側は USD までしか責任を持たない
+    // If you need a non-USD currency (e.g. JPY), call your FX service
+    // here. The package only commits to USD.
 });
 
 // ════════════════════════════════════════════════════
-// Scenario C: 失敗 event も落とさず記録
+// Scenario C: Record failures too
 // ════════════════════════════════════════════════════
 
 Event::listen(PromptExecutionFailed::class, function (PromptExecutionFailed $event): void {
-    // 失敗した LLM call も API 課金が発生している可能性はある。
-    // exception と metadata は取れるが、response / usage / cost は入っていない。
+    // Failed calls may still have incurred API cost.
+    // exception + metadata are available; response / usage / cost are not.
     Log::error('llm_call_failed', [
         'execution_id' => $event->executionId,
         'provider' => $event->provider,
@@ -110,21 +111,22 @@ Event::listen(PromptExecutionFailed::class, function (PromptExecutionFailed $eve
 });
 
 // ════════════════════════════════════════════════════
-// Scenario D: unknown model の扱い
+// Scenario D: Unknown model handling
 // ════════════════════════════════════════════════════
 //
-// pricing 表に定義がないモデルを呼んだ場合、
-// config('prism-prompt-pricing.unknown_model_behavior') に応じて挙動が変わる:
+// When you call a model that is missing from the pricing table, the
+// behaviour depends on `config('prism-prompt-pricing.unknown_model_behavior')`:
 //
 //   'zero' (default):
 //     cost->totalCostUsd === 0.0
 //     cost->snapshot->source === 'unknown_model:provider/model'
-//     → Listener 側で「通常の zero-cost 行」として保存してよい。
+//     → Persist as a normal zero-cost row in your listener.
 //
 //   'throw':
-//     Prompt::executePrism() 内で InvalidArgumentException が上がる。
-//     executeSync() は例外を再 throw するので、呼び出し側で catch するか
-//     PromptExecutionFailed 側で拾うこと。
+//     `Prompt::executePrism()` raises InvalidArgumentException.
+//     `executeSync()` re-throws, so catch at the call site or handle it
+//     via PromptExecutionFailed.
 //
-// モデル追加直後の一時的な zero-cost 行は後日 pricing 表を整備した後に
-// 再計算で更新する運用が現実的。
+// A practical workflow: leave temporary zero-cost rows in place when a
+// new model ships, then update the pricing table and recompute the
+// affected rows once you have authoritative rates.

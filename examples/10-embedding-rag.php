@@ -1,16 +1,17 @@
 <?php
 
 /**
- * Example 10: Embedding — RAG ドキュメントインデキシング
+ * Example 10: Embedding — RAG document indexing
  *
- * EmbeddingPrompt は LLM テキスト生成ではなくベクトル化用の API。
- * `Prompt::load()` 同様 YAML で provider/model を宣言できる。
+ * `EmbeddingPrompt` is the vectoriser counterpart to `Prompt`. It uses
+ * the same YAML mechanism to declare provider/model and is invoked with
+ * the input text directly.
  *
- * このサンプルは社内ドキュメントを chunk 化 → embedding → pgvector に保存する
- * RAG (Retrieval-Augmented Generation) の indexing 側を想定。
+ * The example below covers the indexing side of a RAG pipeline:
+ * chunk an internal document, embed each chunk, store into pgvector.
  *
- * 検索側 (query 文を embedding して cosine 距離で類似 chunk を引く) も
- * 同じ EmbeddingPrompt を使えば良い。
+ * The query side (embedding the user's question, then cosine-distance
+ * search) uses the same `EmbeddingPrompt`.
  */
 
 declare(strict_types=1);
@@ -18,47 +19,47 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\DB;
 use Kent013\PrismPrompt\EmbeddingPrompt;
 
-// ── YAML テンプレート ──────────────────────────────
+// ── YAML template ──────────────────────────────────
 // resources/prompts/document-embedding.yaml
 //
 // name: document-embedding
 // provider: openai
-// model: text-embedding-3-small      # 1536 次元 / 安価
+// model: text-embedding-3-small      # 1536 dimensions / inexpensive
 //
-// # 注: EmbeddingPrompt は system_prompt / prompt フィールドを使わない。
-// # 入力テキストは executeSync($text) に直接渡す。
+// # Note: EmbeddingPrompt does not use system_prompt / prompt fields.
+// # Pass the input text directly to executeSync($text).
 
 // ════════════════════════════════════════════════════
-// Scenario A: 単発の embedding
+// Scenario A: One-off embedding
 // ════════════════════════════════════════════════════
 
 /** @var array<int, float> $vector */
-$vector = EmbeddingPrompt::load('document-embedding')->executeSync('社内オンボーディングの手順');
+$vector = EmbeddingPrompt::load('document-embedding')->executeSync('Internal onboarding procedure');
 
-// $vector は array<int, float> (model に応じた次元数)。
-// pgvector や Pinecone, Qdrant などにそのまま投入できる。
+// $vector is array<int, float> (length depends on the model). Drop it
+// straight into pgvector / Pinecone / Qdrant / etc.
 
 // ════════════════════════════════════════════════════
-// Scenario B: ドキュメントを chunk 化して bulk index
+// Scenario B: Bulk indexing chunked documents
 // ════════════════════════════════════════════════════
 
 /** @var iterable<array{document_id: int, chunk_index: int, content: string}> $chunks */
 $chunks = [
-    ['document_id' => 1, 'chunk_index' => 0, 'content' => '会社の理念...'],
-    ['document_id' => 1, 'chunk_index' => 1, 'content' => '営業時間...'],
-    ['document_id' => 2, 'chunk_index' => 0, 'content' => '入社手続き...'],
+    ['document_id' => 1, 'chunk_index' => 0, 'content' => 'Company values...'],
+    ['document_id' => 1, 'chunk_index' => 1, 'content' => 'Office hours...'],
+    ['document_id' => 2, 'chunk_index' => 0, 'content' => 'Onboarding checklist...'],
 ];
 
 foreach ($chunks as $chunk) {
     $vector = EmbeddingPrompt::load('document-embedding')
         ->executeSync($chunk['content']);
 
-    // pgvector カラム想定 (Laravel の生 SQL bind では vector 型を文字列で送る)
+    // pgvector column. Laravel raw bindings expect the vector as a
+    // string in the '[0.1, 0.2, ...]' format.
     DB::table('document_chunks')->updateOrInsert(
         ['document_id' => $chunk['document_id'], 'chunk_index' => $chunk['chunk_index']],
         [
             'content' => $chunk['content'],
-            // pgvector は '[0.1, 0.2, ...]' 形式の文字列を受ける
             'embedding' => '['.implode(',', $vector).']',
             'updated_at' => now(),
         ]
@@ -66,7 +67,7 @@ foreach ($chunks as $chunk) {
 }
 
 // ════════════════════════════════════════════════════
-// Scenario C: BYOK — ユーザーの API key で embed
+// Scenario C: BYOK — embed with the user's API key
 // ════════════════════════════════════════════════════
 
 $vector = EmbeddingPrompt::load('document-embedding')
@@ -74,12 +75,12 @@ $vector = EmbeddingPrompt::load('document-embedding')
     ->executeSync($query);
 
 // ════════════════════════════════════════════════════
-// Scenario D: 検索クエリ → 類似 chunk 取得
+// Scenario D: Query-time similarity search
 // ════════════════════════════════════════════════════
 
-$queryVector = EmbeddingPrompt::load('document-embedding')->executeSync('入社時の流れを教えて');
+$queryVector = EmbeddingPrompt::load('document-embedding')->executeSync('Walk me through onboarding');
 
-// pgvector の '<=>' は cosine 距離 (低いほど類似)
+// pgvector's '<=>' is cosine distance (lower = more similar).
 $rows = DB::select(
     'SELECT document_id, chunk_index, content, embedding <=> ? AS distance
      FROM document_chunks
@@ -88,17 +89,18 @@ $rows = DB::select(
     ['['.implode(',', $queryVector).']']
 );
 
-// あとは取り出した chunk を Prompt::load('answer_with_context', [...]) に
-// 渡して回答生成すれば RAG が完成する (回答側は通常の Prompt で良い)。
+// Feed the retrieved chunks into a regular `Prompt::load('answer_with_context', ...)`
+// to generate the final answer — that's the full RAG loop.
 
 // ════════════════════════════════════════════════════
-// 制約
+// Limitations
 // ════════════════════════════════════════════════════
 //
-// - EmbeddingPrompt は PromptExecutionCompleted / Failed event を発火しない。
-//   コスト集計は legacy PerformanceLogger 経由 (PRISM_PROMPT_DEBUG=true) で
-//   ログを取り、out-of-band で集計する必要がある (将来 events に移行予定)。
-// - 同じ chunk をリインデックスする際は idempotent に書けるよう
-//   (document_id, chunk_index) を unique key にしておくと安全。
-// - text-embedding-3-small は 1 入力あたり 8191 トークンが上限。
-//   大きなドキュメントは事前に chunk 化する (LangChain 等の splitter を参考に)。
+// - EmbeddingPrompt does not yet dispatch
+//   PromptExecutionCompleted / PromptExecutionFailed events.
+//   Cost tracking goes through the legacy PerformanceLogger
+//   (PRISM_PROMPT_DEBUG=true) for now (events migration is planned).
+// - Make `(document_id, chunk_index)` a unique key so re-indexing is
+//   idempotent.
+// - text-embedding-3-small accepts up to 8191 tokens per input; chunk
+//   large documents beforehand (LangChain-style splitters work well).

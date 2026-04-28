@@ -1,19 +1,20 @@
 <?php
 
 /**
- * Example 1: Basic - system_prompt による役割分離
+ * Example 1: Basic — role separation via `system_prompt`
  *
- * Prompt::load() で YAML を読み込み、system_prompt と prompt を
- * それぞれ SystemMessage / UserMessage として LLM に送信する最もシンプルなパターン。
+ * Simplest pattern: load a YAML template with `Prompt::load()` and let the
+ * package send `system_prompt` and `prompt` as separate `SystemMessage` /
+ * `UserMessage` to the LLM.
  *
- * PHPクラスを作成する必要はありません。
+ * No PHP subclass needed.
  */
 
 declare(strict_types=1);
 
 use Kent013\PrismPrompt\Prompt;
 
-// ── YAML テンプレート ──────────────────────────────
+// ── YAML template ─────────────────────────────────
 // resources/prompts/summarize.yaml
 //
 // name: summarize
@@ -23,26 +24,26 @@ use Kent013\PrismPrompt\Prompt;
 // temperature: 0.3
 //
 // system_prompt: |
-//   あなたは文章要約の専門家です。
-//   以下のルールに従ってください:
-//   - 元の文章の要点を3つ以内に絞る
-//   - 各要点は1文で簡潔に表現する
-//   - 箇条書き形式で出力する
+//   You are a text summarisation expert.
+//   Follow these rules:
+//   - Distil the source text into at most three points.
+//   - Each point is one concise sentence.
+//   - Format as a bullet list.
 //
 // prompt: |
-//   以下の文章を要約してください。
+//   Summarise the following text.
 //
 //   {{ $text }}
 //
-// ── 送信されるメッセージ ──────────────────────────────
-// | Role          | Content                          |
-// |---------------|----------------------------------|
-// | SystemMessage | あなたは文章要約の専門家です...     |
-// | UserMessage   | 以下の文章を要約してください...     |
+// ── Resulting messages sent to the LLM ────────────
+// | Role          | Content                                   |
+// |---------------|-------------------------------------------|
+// | SystemMessage | You are a text summarisation expert ...   |
+// | UserMessage   | Summarise the following text ...          |
 
 $result = Prompt::load('summarize', [
-    'text' => '長い文章がここに入ります...',
+    'text' => 'A long passage of text goes here ...',
 ])->executeSync();
 
-// $result は string（生のテキスト応答）
+// $result is a string (raw text response)
 echo $result;

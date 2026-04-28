@@ -1,17 +1,17 @@
 <?php
 
 /**
- * Example 4: Testing - メッセージ対応のアサーション
+ * Example 4: Testing — message-aware assertions
  *
- * Prompt::fake() でモック化し、system / user メッセージを
- * 個別に検証するテストパターン。
+ * Mock LLM calls with `Prompt::fake()` and verify the system / user
+ * messages independently.
  *
- * v0.6 で追加されたアサーションメソッド:
- * - assertSystemMessageContains()  … system_prompt の内容を検証
- * - assertUserMessageContains()    … prompt の内容を検証
- * - assertHasSystemMessage()       … SystemMessage が送信されたか
- * - assertMessageCount()           … メッセージ数の検証
- * - assertPromptContains()         … 全メッセージから横断検索（既存互換）
+ * Assertions added in v0.6:
+ * - assertSystemMessageContains()  ... checks system_prompt content
+ * - assertUserMessageContains()    ... checks prompt content
+ * - assertHasSystemMessage()       ... ensures a SystemMessage was sent
+ * - assertMessageCount()           ... message count
+ * - assertPromptContains()         ... cross-message search (legacy compat)
  */
 
 declare(strict_types=1);
@@ -20,7 +20,7 @@ use Kent013\PrismPrompt\Prompt;
 use Kent013\PrismPrompt\Testing\TextResponseFake;
 
 // ════════════════════════════════════════════════════
-// Scenario A: Prompt::load() のテスト
+// Scenario A: Testing Prompt::load()
 // ════════════════════════════════════════════════════
 
 // YAML: resources/prompts/greeting.yaml
@@ -39,24 +39,24 @@ it('sends system prompt and user message separately', function (): void {
 
     Prompt::load('greeting', ['userName' => 'Alice'])->executeSync();
 
-    // SystemMessage が送信されたことを確認
+    // A SystemMessage was dispatched.
     $fake->assertHasSystemMessage();
 
-    // SystemMessage の内容を検証（役割指示が含まれている）
+    // The SystemMessage carries the role instructions.
     $fake->assertSystemMessageContains('friendly greeting assistant');
     $fake->assertSystemMessageContains('JSON format');
 
-    // UserMessage の内容を検証（動的データが含まれている）
+    // The UserMessage carries the dynamic data.
     $fake->assertUserMessageContains('Say hello to Alice');
 
-    // メッセージ数の検証（system + user = 2）
+    // Message count = system + user = 2.
     $fake->assertMessageCount(2);
 
-    // 全メッセージ横断検索（既存の assertPromptContains も使える）
+    // Cross-message search still works.
     $fake->assertPromptContains('Alice');
     $fake->assertPromptContains('greeting assistant');
 
-    // プロバイダー・モデルの検証
+    // Provider / model assertions.
     $fake->assertProvider('anthropic');
     $fake->assertModel('claude-sonnet-4-5-20250929');
 
@@ -64,41 +64,41 @@ it('sends system prompt and user message separately', function (): void {
 });
 
 // ════════════════════════════════════════════════════
-// Scenario B: サブクラス Prompt のテスト
+// Scenario B: Testing a Prompt subclass
 // ════════════════════════════════════════════════════
 
-// HintGenerationPrompt（Example 2 参照）のテスト例
+// Test for HintGenerationPrompt (see Example 2).
 
 it('generates hint with correct system and user messages', function (): void {
     $fake = HintGenerationPrompt::fake([
         TextResponseFake::make()->withText(json_encode([
-            'hint' => '移行要件について確認しましょう',
+            'hint' => 'Drill into the migration requirements',
             'examples' => [
-                'クラウドへの移行で重視するポイントは何ですか？',
-                '現在のデータ量はどのくらいですか？',
+                'What matters most when you move to the cloud?',
+                'How large is your current dataset?',
             ],
         ])),
     ]);
 
     $result = (new HintGenerationPrompt(
-        conversationText: "トレーニー: 現在のシステム構成を教えてください\nNPC: オンプレミスで運用しています",
-        progressText: "確認済み:\n- 現行システムの概要 (100%)",
-        latestNpcMessage: 'オンプレミスで運用しています',
+        conversationText: "Trainee: Tell me about your current system.\nNPC: We run on-prem.",
+        progressText: "Confirmed:\n- Current system overview (100%)",
+        latestNpcMessage: 'We run on-prem.',
     ))->executeSync();
 
-    // DTO が正しくパースされている
+    // The DTO is parsed correctly.
     expect($result)->toBeInstanceOf(HintResponseDto::class);
-    expect($result->hint)->toBe('移行要件について確認しましょう');
+    expect($result->hint)->toBe('Drill into the migration requirements');
     expect($result->examples)->toHaveCount(2);
 
-    // system_prompt にJSON出力形式の指示が含まれている
-    $fake->assertSystemMessageContains('ヒントを生成する役割');
+    // The system_prompt declares the JSON schema.
+    $fake->assertSystemMessageContains('hint');
     $fake->assertSystemMessageContains('"hint"');
     $fake->assertSystemMessageContains('"examples"');
 
-    // prompt に動的データが含まれている
-    $fake->assertUserMessageContains('現在のシステム構成を教えてください');
-    $fake->assertUserMessageContains('現行システムの概要');
+    // The prompt carries the dynamic data.
+    $fake->assertUserMessageContains('Tell me about your current system');
+    $fake->assertUserMessageContains('Current system overview');
 
     $fake->assertCallCount(1);
 
@@ -106,26 +106,26 @@ it('generates hint with correct system and user messages', function (): void {
 });
 
 // ════════════════════════════════════════════════════
-// Scenario C: system_prompt なしの YAML テスト
+// Scenario C: YAML without `system_prompt`
 // ════════════════════════════════════════════════════
 
 it('works without system_prompt in yaml', function (): void {
-    // system_prompt フィールドがない YAML
+    // YAML has no `system_prompt` field.
     $fake = Prompt::fake([
         TextResponseFake::make()->withText('Hello!'),
     ]);
 
-    // system_prompt がない場合、UserMessage のみ送信される
+    // Without system_prompt only a UserMessage is sent.
     Prompt::load('legacy-prompt', ['name' => 'Alice'])->executeSync();
 
-    $fake->assertMessageCount(1); // UserMessage のみ
+    $fake->assertMessageCount(1); // UserMessage only.
     $fake->assertUserMessageContains('Alice');
 
     Prompt::stopFaking();
 });
 
 // ════════════════════════════════════════════════════
-// Scenario D: 複数回実行の検証
+// Scenario D: Multiple executions
 // ════════════════════════════════════════════════════
 
 it('records multiple executions with messages', function (): void {
@@ -139,14 +139,14 @@ it('records multiple executions with messages', function (): void {
 
     $fake->assertCallCount(2);
 
-    // assertRequest で個別のリクエストを検証
+    // Inspect each request individually.
     $fake->assertRequest(function (array $recorded): void {
-        // 1回目: Alice
+        // Call 1: Alice
         expect($recorded[0]['messages'])->toBeArray();
         $userMsg = end($recorded[0]['messages']);
         expect($userMsg->content)->toContain('Alice');
 
-        // 2回目: Bob
+        // Call 2: Bob
         $userMsg2 = end($recorded[1]['messages']);
         expect($userMsg2->content)->toContain('Bob');
     });

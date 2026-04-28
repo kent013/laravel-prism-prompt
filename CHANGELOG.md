@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.5] - 2026-04-28
+
+### Changed — examples を全て英語化
+
+`examples/01-12` の日本語コメント・サンプル文字列を全て英語に置き換えた。
+パッケージ自体は英語圏に publish される前提なので、サンプルだけ日本語が残って
+いると新規ユーザーが読み解けない問題があった。
+
+#### 変更内容
+
+- 全 12 ファイル (`01-basic-system-prompt.php` 〜 `12-bundle-pipeline.php`)
+  のコメント・サンプル会話・YAML サンプル内の文字列を英訳
+- コード (識別子・API 呼び出し) は無変更
+- v0.14.4 までの動作・公開 API には一切影響なし
+
+#### Migration
+
+不要 (ドキュメント/サンプル整理のみ)。
+
 ## [0.14.4] - 2026-04-28
 
 ### Refactored — `follow()` terminal 判定 sequence の共通化
