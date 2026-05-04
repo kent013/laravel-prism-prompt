@@ -21,7 +21,9 @@ use Kent013\PrismPrompt\Testing\TextResponseFake;
 use Kent013\PrismPrompt\Traits\ResolvesProviderConfig;
 use Kent013\PrismPrompt\Values\CacheType;
 use Prism\Prism\Contracts\Message;
+use Prism\Prism\Contracts\Schema;
 use Prism\Prism\Facades\Prism;
+use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Text\Response as TextResponse;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
@@ -349,6 +351,12 @@ abstract class Prompt implements PromptInterface
     public function execute(): PromiseInterface
     {
         return async(function (): mixed {
+            $schema = $this->getJsonSchema();
+            if ($schema instanceof Schema) {
+                $data = $this->executePrismStructured($schema);
+
+                return $this->parseStructured($data);
+            }
             $responseText = $this->executePrism();
 
             return $this->parseResponse($responseText);
@@ -362,9 +370,44 @@ abstract class Prompt implements PromptInterface
      */
     public function executeSync(): mixed
     {
+        $schema = $this->getJsonSchema();
+        if ($schema instanceof Schema) {
+            $data = $this->executePrismStructured($schema);
+
+            return $this->parseStructured($data);
+        }
         $responseText = $this->executePrism();
 
         return $this->parseResponse($responseText);
+    }
+
+    /**
+     * Return a Prism Schema to enable structured-output mode (Prism::structured()).
+     * Default null keeps the legacy text + extractJson() path.
+     *
+     * Subclasses that opt-in must also override parseStructured() to map the
+     * decoded array into TResponse without round-tripping through json_encode.
+     */
+    protected function getJsonSchema(): ?Schema
+    {
+        return null;
+    }
+
+    /**
+     * Parse the structured-output array into TResponse.
+     *
+     * Default implementation falls back to the legacy parseResponse path by
+     * re-encoding the array as JSON. Subclasses that opt-in to structured
+     * output should override this for direct array → DTO mapping.
+     *
+     * @param  array<string, mixed>  $data
+     * @return TResponse
+     *
+     * @throws \JsonException
+     */
+    protected function parseStructured(array $data): mixed
+    {
+        return $this->parseResponse(json_encode($data, JSON_THROW_ON_ERROR));
     }
 
     /**
@@ -691,6 +734,184 @@ abstract class Prompt implements PromptInterface
 
             throw $e;
         }
+    }
+
+    /**
+     * Execute Prism::structured() with the given schema and return the
+     * decoded structured array. Mirrors executePrism() one-for-one for
+     * builder configuration (system prompt / messages / provider tools /
+     * max steps / client options) and event emission semantics.
+     *
+     * @return array<string, mixed>
+     */
+    protected function executePrismStructured(Schema $schema): array
+    {
+        $messages = $this->buildMessages();
+        $selected = $this->selectOptimalProvider();
+
+        $provider = $selected['provider'];
+        $model = $selected['model'];
+        $config = $selected['config'];
+
+        if (static::isFaking() && static::$fake !== null) {
+            static::$fake->record(static::class, $messages, $provider, $model);
+
+            return $this->normalizeFakeResponseToStructured(static::$fake->nextResponse());
+        }
+
+        $executionId = (string) Str::uuid();
+        $startTime = microtime(true);
+
+        $systemPrompt = null;
+        $nonSystemMessages = [];
+        foreach ($messages as $message) {
+            if ($message instanceof SystemMessage) {
+                $systemPrompt = $message->content;
+            } else {
+                $nonSystemMessages[] = $message;
+            }
+        }
+
+        $builder = Prism::structured()
+            ->withSchema($schema)
+            ->using($provider, $model, $config)
+            ->withMaxTokens($this->resolveMaxTokens());
+
+        if ($systemPrompt !== null) {
+            $builder->withSystemPrompt($systemPrompt);
+        }
+
+        if ($nonSystemMessages !== []) {
+            $builder->withMessages($nonSystemMessages);
+        }
+
+        $resolvedProviderTools = $this->resolveProviderTools();
+        if ($resolvedProviderTools !== []) {
+            $builder->withProviderTools($resolvedProviderTools);
+        }
+
+        $resolvedMaxSteps = $this->resolveMaxSteps();
+        if ($resolvedMaxSteps !== null) {
+            $builder->withMaxSteps($resolvedMaxSteps);
+        }
+
+        $resolvedClientOptions = $this->resolveClientOptions();
+        if ($resolvedClientOptions !== []) {
+            $builder->withClientOptions($resolvedClientOptions);
+        }
+
+        try {
+            $result = $builder->asStructured();
+            Assert::isInstanceOf($result, StructuredResponse::class);
+
+            $durationMs = (microtime(true) - $startTime) * 1000;
+
+            $cost = $this->computeCost($provider, $model, $result->usage, $executionId);
+
+            try {
+                event(new PromptExecutionCompleted(
+                    executionId: $executionId,
+                    promptClass: static::class,
+                    promptTemplate: $this->extractPromptTemplate(),
+                    provider: $provider,
+                    model: $model,
+                    finishReason: $result->finishReason,
+                    stepCount: $result->steps->count(),
+                    totalUsage: $result->usage,
+                    durationMs: $durationMs,
+                    requestId: $result->meta->id,
+                    response: $result,
+                    metadata: $this->metadata_context,
+                    cost: $cost,
+                ));
+            } catch (Throwable $eventError) {
+                Log::error('Failed to dispatch PromptExecutionCompleted event', [
+                    'execution_id' => $executionId,
+                    'error' => $eventError->getMessage(),
+                ]);
+            }
+
+            $structured = $result->structured ?? [];
+            Assert::isArray($structured);
+
+            /** @var array<string, mixed> $structured */
+            return $structured;
+        } catch (Throwable $e) {
+            $durationMs = (microtime(true) - $startTime) * 1000;
+
+            try {
+                event(new PromptExecutionFailed(
+                    executionId: $executionId,
+                    promptClass: static::class,
+                    promptTemplate: $this->extractPromptTemplate(),
+                    provider: $provider,
+                    model: $model,
+                    durationMs: $durationMs,
+                    exception: $e,
+                    metadata: $this->metadata_context,
+                ));
+            } catch (Throwable $eventError) {
+                Log::error('Failed to dispatch PromptExecutionFailed event', [
+                    'execution_id' => $executionId,
+                    'original_error' => $e->getMessage(),
+                    'dispatch_error' => $eventError->getMessage(),
+                ]);
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Decode a Prompt::fake TextResponseFake JSON text into a structured
+     * array. Used by executePrismStructured() when Prompt::fake is the
+     * active short-circuit (Prism::fake([StructuredResponseFake]) does not
+     * pass through this normalizer — Prism returns the structured array
+     * directly).
+     *
+     * @return array<string, mixed>
+     */
+    private function normalizeFakeResponseToStructured(Testing\TextResponseFake $fakeResponse): array
+    {
+        $text = $fakeResponse->getText();
+        if ($text === '') {
+            throw new InvalidJsonResponseException(
+                'Prompt::fake TextResponseFake returned empty text for structured prompt; pass an explicit JSON object (e.g. "{}").'
+            );
+        }
+
+        try {
+            $decoded = json_decode($text, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException $e) {
+            throw new InvalidJsonResponseException(
+                'Failed to decode Prompt::fake TextResponseFake as JSON for structured prompt: '.$e->getMessage(),
+                0,
+                $e,
+            );
+        }
+
+        if (! is_array($decoded)) {
+            throw new InvalidJsonResponseException(
+                'Structured prompt fake decoded to a non-object JSON value (got '.get_debug_type($decoded).'); expected JSON object.'
+            );
+        }
+
+        if ($decoded !== [] && array_is_list($decoded)) {
+            throw new InvalidJsonResponseException(
+                'Structured prompt fake decoded to a list array; expected JSON object with string keys.'
+            );
+        }
+
+        foreach (array_keys($decoded) as $key) {
+            if (! is_string($key)) {
+                throw new InvalidJsonResponseException(
+                    'Structured prompt fake decoded array contains non-string key (got '.get_debug_type($key).').'
+                );
+            }
+        }
+
+        /** @var array<string, mixed> $decoded */
+        return $decoded;
     }
 
     /**

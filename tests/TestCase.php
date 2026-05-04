@@ -6,12 +6,14 @@ namespace Kent013\PrismPrompt\Tests;
 
 use Kent013\PrismPrompt\PromptServiceProvider;
 use Orchestra\Testbench\TestCase as BaseTestCase;
+use Prism\Prism\PrismServiceProvider;
 
 abstract class TestCase extends BaseTestCase
 {
     protected function getPackageProviders($app): array
     {
         return [
+            PrismServiceProvider::class,
             PromptServiceProvider::class,
         ];
     }
