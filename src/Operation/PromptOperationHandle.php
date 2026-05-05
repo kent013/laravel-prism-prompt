@@ -6,6 +6,7 @@ namespace Kent013\PrismPrompt\Operation;
 
 use Carbon\CarbonImmutable;
 use Closure;
+use Generator;
 use Illuminate\Support\Facades\DB;
 use Kent013\PrismPrompt\Operation\Exceptions\IncompletePhaseException;
 use Kent013\PrismPrompt\Operation\Exceptions\StaleOwnershipException;
@@ -17,6 +18,7 @@ use Kent013\PrismPrompt\Operation\Models\PromptJobPhaseLlmCall;
 use Kent013\PrismPrompt\Operation\Models\PromptJobPhaseRecord;
 use Kent013\PrismPrompt\Operation\Models\PromptSerializationLock;
 use Throwable;
+use TypeError;
 
 final class PromptOperationHandle
 {
@@ -152,17 +154,18 @@ final class PromptOperationHandle
      * @template TKey
      * @template TYield
      *
-     * @param  Closure(PromptJobPhase): \Generator<TKey, TYield, mixed, mixed>  $body
+     * @param  Closure(PromptJobPhase): Generator<TKey, TYield, mixed, mixed>  $body
      * @param  null|Closure(CompletedPhaseRecord): void  $onSkipped
      * @param  null|Closure(PromptJobPhase): void  $onCommit
-     * @return \Generator<TKey, TYield, mixed, mixed>
+     *
+     * @return Generator<TKey, TYield, mixed, mixed>
      */
     public function streamingPhase(
         string $name,
         Closure $body,
         ?Closure $onSkipped = null,
         ?Closure $onCommit = null,
-    ): \Generator {
+    ): Generator {
         if (! in_array($name, $this->phaseManifest, true)) {
             throw new UnknownPhaseException("Phase '{$name}' is not in manifest");
         }
@@ -204,8 +207,8 @@ final class PromptOperationHandle
 
         try {
             $generator = $body($phaseHandle);
-            if (! $generator instanceof \Generator) {
-                throw new \TypeError(
+            if (! $generator instanceof Generator) {
+                throw new TypeError(
                     "streamingPhase body must return a Generator. Did you forget `yield`? phase='{$name}'"
                 );
             }

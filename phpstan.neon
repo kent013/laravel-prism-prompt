@@ -6,6 +6,4 @@ parameters:
         - src
     level: 8
     ignoreErrors:
-        - '#React\\Async\\async#'
-        - '#React\\Promise\\PromiseInterface#'
         - '#Trait .+ is used zero times#'

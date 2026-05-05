@@ -2,7 +2,7 @@
     "name": "kent013/laravel-prism-prompt",
     "description": "Laravel Mailable-like API for LLM prompts with Prism",
     "type": "library",
-    "version": "0.14.6",
+    "version": "0.15.0",
     "license": "MIT",
     "authors": [
         {
@@ -14,6 +14,7 @@
         "echolabsdev/prism": "^0.10|^0.99|^0.100|^1.0",
         "illuminate/support": "^10.0|^11.0|^12.0|^13.0",
         "illuminate/view": "^10.0|^11.0|^12.0|^13.0",
+        "react/async": "^4.3",
         "symfony/yaml": "^6.0|^7.0|^8.0",
         "webmozart/assert": "^1.11|^2.0"
     },
@@ -27,9 +28,6 @@
         "test": "pest",
         "phpstan": "phpstan analyse",
         "fix": "pint"
-    },
-    "suggest": {
-        "react/promise": "Required for async execution with executeAsync()"
     },
     "autoload": {
         "psr-4": {

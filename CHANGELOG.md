@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-05-05
+
+### Added — `Prism::structured()` 統合 (`getJsonSchema` / `parseStructured`)
+
+LLM 応答契約を YAML 内の自然言語指示から PHP の `Prism\Prism\Contracts\Schema`
+に集約する 2 個のフックを `Prompt` 基底に追加。Subclass が
+`getJsonSchema()` を override して Schema を返すと、`execute()` /
+`executeSync()` は `Prism::structured()->withSchema()->asStructured()` 経路に
+切り替わり、decode された配列を `parseStructured()` に渡す。
+
+#### 新規 API
+
+| メンバ | 役割 |
+|--------|------|
+| `protected getJsonSchema(): ?Schema` | non-null を返すと structured 経路へ。`null` (default) は legacy text + `extractJson()` を維持 |
+| `protected parseStructured(array $data): mixed` | structured 経路の subclass パース hook。default 実装は `parseResponse(json_encode($data))` で legacy 経路にフォールバック |
+| `protected executePrismStructured(Schema $schema): array` | structured 経路の本体 (subclass からは override 不要) |
+
+#### 変更点
+
+- `PromptExecutionCompleted::$response` の型を
+  `Prism\Prism\Text\Response|Prism\Prism\Structured\Response` に union 化。
+  両者とも `->text` を持つため legacy listener は無改変で動作。
+  structured 専用 field (`->structured`) を読みたい listener は `instanceof`
+  で型を絞ること。
+- `executePrismStructured()` は `executePrism()` と完全に同形の builder
+  構築 (system prompt / messages / providerTools / maxSteps / clientOptions)
+  と event 発火 (`PromptExecutionCompleted` / `PromptExecutionFailed` の payload
+  schema は両経路で一致) を行う。
+- `Prompt::fake([TextResponseFake])` を structured 経路に当てた場合の
+  `normalizeFakeResponseToStructured()` private helper を追加。
+  空文字 / list 配列 / 数値キー / scalar (string / int) はすべて
+  `InvalidJsonResponseException` で fail-fast。
+
+#### 依存関係
+
+- `react/async ^4.3` を `require-dev` から **`require` に昇格**。
+  公開 `execute()` API が `React\Async\async` を runtime で呼ぶため、
+  これまでは利用者が明示インストールしないと `execute()` が runtime で
+  fail し得た (実態と乖離していた `suggest: react/promise` は撤去)。
+- `phpstan.neon` の `#React\\Async\\async#` / `#React\\Promise\\PromiseInterface#`
+  ignore パターンを撤去 (依存解決後は実エラー化を許容)。
+
+#### 動作互換
+
+- `getJsonSchema()` の default は `null` のため、**既存 subclass は無改変で
+  従来の text + `extractJson()` 経路で動作**する (BC break なし)。
+- `PromptExecutionCompleted::$response` の union 化は `TextResponse` 単一型を
+  受けていた listener に対しても互換 (両者 `->text` を共有)。
+
+#### Migration (推奨経路)
+
+新規 prompt は最初から structured 経路を選び、既存 prompt は段階的に
+移行する。手順は [docs/structured-output.md](docs/structured-output.md) §Migration
+を参照。
+
+#### Documentation
+
+- [docs/structured-output.md](docs/structured-output.md) (新規)
+- [README.md](README.md) — 「Subclassing」「At a glance」を schema 経路前提で更新
+- [examples/13-structured-output.php](examples/13-structured-output.php) (新規)
+
 ## [0.14.6] - 2026-04-28
 
 ### Style — PHP-CS-Fixer auto-fix carry-over
