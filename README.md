@@ -51,7 +51,8 @@ php artisan vendor:publish --tag=prism-prompt-pricing
 | Need | Approach | Doc | Example |
 |------|----------|-----|---------|
 | One-shot prompt with a YAML file | `Prompt::load('name', $vars)->executeSync()` | [yaml-template](docs/yaml-template.md) | [01](examples/01-basic-system-prompt.php) |
-| Typed DTO response | Subclass + `parseResponse()` + `extractJson()` | [yaml-template](docs/yaml-template.md) | [02](examples/02-json-dto-response.php) |
+| Typed DTO response (legacy / text JSON) | Subclass + `parseResponse()` + `extractJson()` | [yaml-template](docs/yaml-template.md) | [02](examples/02-json-dto-response.php) |
+| **Schema-enforced DTO response** (recommended) | Subclass + `getJsonSchema()` + `parseStructured()` | [structured-output](docs/structured-output.md) | [13](examples/13-structured-output.php) |
 | Send chat history natively | Override `buildConversationMessages()` | [yaml-template](docs/yaml-template.md) | [03](examples/03-conversation-history.php) |
 | Defend against prompt injection | `UserInput::from()` + `DefensiveInstructions` | [prompt-injection](docs/prompt-injection.md) | [06](examples/06-user-input-defense.php) |
 | Multi-provider fallback (BYOK) | YAML `models[]` + `withApiKeys()` | [providers](docs/providers.md) | [08](examples/08-multi-provider-fallback.php) |
@@ -99,6 +100,63 @@ class GreetingPrompt extends Prompt
 $result = (new GreetingPrompt('Alice'))->executeSync();
 ```
 
+### Structured output (recommended for new code, since v0.15.0)
+
+For prompts whose output must conform to a fixed shape, declare a Prism schema
+via `getJsonSchema()`. The base will route the call through
+`Prism::structured()` and pass the decoded array straight to
+`parseStructured()` — no `extractJson()` regex, no YAML JSON example to drift
+out of sync.
+
+```php
+use Kent013\PrismPrompt\Prompt;
+use Prism\Prism\Contracts\Schema;
+use Prism\Prism\Schema\{ObjectSchema, StringSchema, NumberSchema};
+
+/** @extends Prompt<GreetingResponse> */
+class GreetingPrompt extends Prompt
+{
+    public function __construct(public readonly string $userName) { parent::__construct(); }
+
+    protected function getJsonSchema(): ?Schema
+    {
+        return new ObjectSchema(
+            name: 'greeting_response',
+            description: 'A greeting reply',
+            properties: [
+                new StringSchema('message', 'the greeting text'),
+                new NumberSchema(
+                    name: 'tone',
+                    description: 'tone score',
+                    minimum: 0.0,
+                    maximum: 1.0,
+                ),
+            ],
+            requiredFields: ['message', 'tone'],
+        );
+    }
+
+    /** @param array<string, mixed> $data */
+    protected function parseStructured(array $data): GreetingResponse
+    {
+        return new GreetingResponse($data['message'], (float) $data['tone']);
+    }
+
+    // Keep parseResponse as a transitional fallback for Prompt::fake([TextResponseFake])
+    // tests, or remove once the legacy path is gone.
+    protected function parseResponse(string $text): GreetingResponse
+    {
+        $data = $this->extractJson($text);
+        return new GreetingResponse($data['message'], (float) $data['tone']);
+    }
+}
+```
+
+`getJsonSchema()` returning `null` (the default) keeps the legacy
+`Prism::text()` + `extractJson()` path, so existing subclasses continue to work
+unchanged. See [docs/structured-output.md](docs/structured-output.md) for the
+full contract (event payload, fakes, error handling).
+
 YAML lookup (in priority order):
 
 1. `$promptName` property — relative path from `prompts_path`
@@ -142,6 +200,7 @@ YAML lookup (in priority order):
 In-depth topic guides live under [`docs/`](docs/):
 
 - [yaml-template.md](docs/yaml-template.md) — YAML schema, message structure, override hierarchy
+- [structured-output.md](docs/structured-output.md) — `getJsonSchema()` / `parseStructured()` for Prism::structured() (v0.15.0+)
 - [providers.md](docs/providers.md) — multi-provider fallback, runtime API keys
 - [prompt-injection.md](docs/prompt-injection.md) — `UserInput`, `DefensiveInstructions`
 - [parallel-execution.md](docs/parallel-execution.md) — `PromptPool` with prompt caching
@@ -156,7 +215,8 @@ Runnable examples are under [`examples/`](examples/):
 | File | Topic |
 |------|-------|
 | [01-basic-system-prompt.php](examples/01-basic-system-prompt.php) | Quickest path with `Prompt::load()` |
-| [02-json-dto-response.php](examples/02-json-dto-response.php) | Subclass + `extractJson()` → DTO |
+| [02-json-dto-response.php](examples/02-json-dto-response.php) | Subclass + `extractJson()` → DTO (legacy text path) |
+| [13-structured-output.php](examples/13-structured-output.php) | Subclass + `getJsonSchema()` → DTO (Prism::structured, v0.15.0+) |
 | [03-conversation-history.php](examples/03-conversation-history.php) | Native chat history via `buildConversationMessages()` |
 | [04-testing.php](examples/04-testing.php) | Message-aware `Prompt::fake()` assertions |
 | [05-events-and-cost.php](examples/05-events-and-cost.php) | `PromptExecutionCompleted` listener + cost log |

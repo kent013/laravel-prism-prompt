@@ -286,6 +286,7 @@ test('v0.14.0 streamingPhase: body が Generator を返さないと TypeError', 
     $handle = $claim->handle();
 
     $caught = null;
+
     try {
         foreach ($handle->streamingPhase('phase-a', function (): void {
             // not a generator (no yield)
@@ -307,9 +308,11 @@ test('v0.14.0 streamingPhase: body 内 throw で fail event 発火 + recordPhase
     $handle = $claim->handle();
 
     $caught = null;
+
     try {
         foreach ($handle->streamingPhase('phase-a', function () {
             yield 'event-1';
+
             throw new RuntimeException('boom');
         }) as $_) {
         }
