@@ -84,7 +84,6 @@ abstract class Prompt implements PromptInterface
      * Create a TextPrompt instance from YAML template name
      *
      * @param  array<string, mixed>  $variables
-     *
      * @return TextPrompt
      */
     public static function load(string $name, array $variables = []): self
@@ -402,7 +401,6 @@ abstract class Prompt implements PromptInterface
      * output should override this for direct array → DTO mapping.
      *
      * @param  array<string, mixed>  $data
-     *
      * @return TResponse
      *
      * @throws JsonException

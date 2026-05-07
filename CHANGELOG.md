@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-05-08
+
+### Changed — phpdoc スタイル統一
+
+`@param` ブロックと `@return` の間にあった空行を削除して phpdoc を
+連続記述に統一した。pint の `phpdoc_separation` ルール挙動と
+プロジェクトの phpdoc スタイル方針 (連続記述) を合わせるための
+純粋なスタイル変更で、ランタイム挙動の変更はない。
+
+#### 影響ファイル
+
+- `src/Prompt.php`
+- `src/PromptPool.php`
+- `src/Operation/PromptOperationHandle.php`
+- `src/Providers/Anthropic/MessagesRequestBuilder.php`
+- `src/Traits/ResolvesProviderConfig.php`
+- `src/Traits/ValidatesPromptVariables.php`
+- `tests/Unit/StructuredPathTest.php`
+
 ## [0.15.0] - 2026-05-05
 
 ### Added — `Prism::structured()` 統合 (`getJsonSchema` / `parseStructured`)

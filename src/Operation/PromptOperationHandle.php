@@ -157,7 +157,6 @@ final class PromptOperationHandle
      * @param  Closure(PromptJobPhase): Generator<TKey, TYield, mixed, mixed>  $body
      * @param  null|Closure(CompletedPhaseRecord): void  $onSkipped
      * @param  null|Closure(PromptJobPhase): void  $onCommit
-     *
      * @return Generator<TKey, TYield, mixed, mixed>
      */
     public function streamingPhase(

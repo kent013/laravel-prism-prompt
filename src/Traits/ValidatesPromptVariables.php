@@ -39,7 +39,6 @@ trait ValidatesPromptVariables
      * Extract variable names from definitions
      *
      * @param  array<int, VariableDefinition>  $defs
-     *
      * @return array<int, string>
      */
     private function extractVariableNames(array $defs): array
