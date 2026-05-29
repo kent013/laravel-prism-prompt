@@ -80,6 +80,20 @@ final class MessagesRequestBuilder
             $body['system'] = $systemPrompt;
         }
 
+        // Forced tool-use (structured output) for prompts that opt in. When the
+        // prompt returns null (default) no `tools`/`tool_choice` keys are added,
+        // so the request body stays byte-identical to the pre-tool-use shape and
+        // existing pool cache keys are unaffected.
+        $toolConfig = $prompt->getPoolToolConfig();
+        if ($toolConfig !== null) {
+            Assert::keyExists($toolConfig, 'tools', 'pool tool config must define tools');
+            Assert::keyExists($toolConfig, 'tool_choice', 'pool tool config must define tool_choice');
+            Assert::isList($toolConfig['tools'], 'pool tools must be a list');
+            Assert::isArray($toolConfig['tool_choice'], 'pool tool_choice must be an array');
+            $body['tools'] = $toolConfig['tools'];
+            $body['tool_choice'] = $toolConfig['tool_choice'];
+        }
+
         return [
             'url' => self::MESSAGES_URL,
             'headers' => $this->buildHeaders(),

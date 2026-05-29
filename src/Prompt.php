@@ -344,6 +344,42 @@ abstract class Prompt implements PromptInterface
     }
 
     /**
+     * Anthropic `tools` / `tool_choice` config for the pool path. Return null
+     * (default) to send no tools — byte-identical to the pre-tool-use body so
+     * existing pool cache keys are unaffected. Subclasses that want forced
+     * structured output via tool-use override this.
+     *
+     * @return array{tools: list<array<string, mixed>>, tool_choice: array<string, mixed>}|null
+     */
+    public function getPoolToolConfig(): ?array
+    {
+        return null;
+    }
+
+    /**
+     * Build TResponse from a tool_use block's `input` (already valid JSON
+     * decoded to an array) plus the full raw response body. The raw body is
+     * passed so subclasses can retain it for response-gate / canary scanning
+     * over every content block (text + tool_use), not just the tool input.
+     *
+     * Default delegates to the text path by re-encoding the input, so base
+     * callers keep working. Subclasses override to consume the structured
+     * input directly.
+     *
+     * @param  array<string, mixed>  $input
+     * @return TResponse
+     *
+     * @internal Intended for package-internal use by PromptPool.
+     *           Not covered by SemVer backward-compatibility promises.
+     */
+    public function parseToolInputForPool(array $input, string $rawResponseBody): mixed
+    {
+        return $this->parseResponseForPool(
+            json_encode($input, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)
+        );
+    }
+
+    /**
      * Execute prompt asynchronously and return DTO
      *
      * @return PromiseInterface<TResponse>

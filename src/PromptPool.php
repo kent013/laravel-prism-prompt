@@ -151,6 +151,25 @@ final class PromptPool
      */
     private static function parse(Prompt $prompt, Response $response): mixed
     {
+        // Prefer a tool_use block when present (forced structured output). The
+        // full raw body is handed to the prompt so response-gate / canary
+        // scanning can cover every content block, not just the tool input.
+        $rawBody = (string) $response->body();
+        $content = $response->json('content');
+        if (is_array($content)) {
+            foreach ($content as $block) {
+                if (is_array($block)
+                    && ($block['type'] ?? null) === 'tool_use'
+                    && is_array($block['input'] ?? null)) {
+                    /** @var array<string, mixed> $input */
+                    $input = $block['input'];
+
+                    return $prompt->parseToolInputForPool($input, $rawBody);
+                }
+            }
+        }
+
+        // Backward-compatible: no tool_use block → original text extraction.
         $text = $response->json('content.0.text');
         Assert::string($text, 'Anthropic response missing content[0].text');
 
