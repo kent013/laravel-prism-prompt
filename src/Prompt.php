@@ -20,6 +20,7 @@ use Kent013\PrismPrompt\Testing\PromptFake;
 use Kent013\PrismPrompt\Testing\TextResponseFake;
 use Kent013\PrismPrompt\Traits\ResolvesProviderConfig;
 use Kent013\PrismPrompt\Values\CacheType;
+use Kent013\PrismPrompt\Values\PoolCallMeta;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Contracts\Schema;
 use Prism\Prism\Facades\Prism;
@@ -75,9 +76,38 @@ abstract class Prompt implements PromptInterface
     /** @var array<string, CacheType> */
     protected array $cacheBreakpoints = [];
 
+    protected ?PoolCallMeta $poolCallMeta = null;
+
     public function __construct()
     {
         $this->loadMetadata();
+    }
+
+    /**
+     * Capture provider call metadata observed while parsing a pooled / warmup
+     * HTTP response. The pool path bypasses executePrism() (and thus the
+     * PromptExecutionCompleted event), so callers retrieve this via
+     * getPoolCallMeta() to record cost telemetry out-of-band.
+     *
+     * The package stores raw usage only — it does not compute cost.
+     *
+     * @param  array<string, mixed>|null  $usage
+     *
+     * @internal Intended for package-internal use by PromptPool.
+     *           Not covered by SemVer backward-compatibility promises.
+     */
+    public function capturePoolCallMeta(?array $usage, ?string $model, ?string $requestId, string $rawBody): void
+    {
+        $this->poolCallMeta = new PoolCallMeta($usage, $model, $requestId, $rawBody);
+    }
+
+    /**
+     * The metadata captured from the last pooled / warmup execution of this
+     * prompt, or null when the prompt was never executed via PromptPool.
+     */
+    public function getPoolCallMeta(): ?PoolCallMeta
+    {
+        return $this->poolCallMeta;
     }
 
     /**

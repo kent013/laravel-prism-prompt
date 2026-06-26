@@ -61,6 +61,7 @@ php artisan vendor:publish --tag=prism-prompt-pricing
 | Chat assistant w/ history + defence | Combine `UserInput` + history override + DTO | [prompt-injection](docs/prompt-injection.md) | [11](examples/11-chatbot-with-defense.php) |
 | Multi-prompt pipeline (NPC reply → eval → hint) | Chain Prompt subclasses | [yaml-template](docs/yaml-template.md) | [12](examples/12-bundle-pipeline.php) |
 | Cost / usage / audit trail | Listen to `PromptExecutionCompleted` + `withMetadata()` | [events-and-cost](docs/events-and-cost.md) | [05](examples/05-events-and-cost.php) |
+| Cost / usage for pooled calls | `PromptPool::executeWithWarmup()` + `$prompt->getPoolCallMeta()` | [parallel-execution](docs/parallel-execution.md) | [09](examples/09-prompt-pool-parallel.php) |
 | Durable, resumable LLM operation | `PromptOperation::for()->claimOrFollow()` | [prompt-operation](docs/prompt-operation.md) | [07](examples/07-prompt-operation.php) |
 | Test mocked LLM calls | `Prompt::fake()` + assertions | [testing](docs/testing.md) | [04](examples/04-testing.php) |
 | Listener-based debug logs | `PRISM_PROMPT_DEBUG=true` | [debug-logging](docs/debug-logging.md) | — |

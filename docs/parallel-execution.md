@@ -90,14 +90,49 @@ try {
 
 The underlying provider exception is attached as `$previous`.
 
+## Cost / usage tracking with the pool (since v0.17.0)
+
+The pool / warmup path talks to the Anthropic Messages API directly and
+**never goes through `executePrism()`**, so it does not emit the
+`PromptExecutionCompleted` event that the [events-and-cost](events-and-cost.md)
+flow relies on. Without a hook, per-call token usage from a pooled batch
+would be invisible to your cost ledger.
+
+To bridge that gap, `PromptPool` captures the provider `usage` block,
+`model`, and request id from each pooled / warmup response onto the prompt
+instance. Read it back **after** `executeWithWarmup()` returns:
+
+```php
+$results = PromptPool::executeWithWarmup($prompts);
+
+foreach ($prompts as $prompt) {
+    $meta = $prompt->getPoolCallMeta(); // ?PoolCallMeta
+    if ($meta === null || $meta->usage === null) {
+        continue; // never executed via the pool, or usage absent
+    }
+
+    // $meta->usage    — raw Anthropic usage map (input_tokens, output_tokens,
+    //                   cache_creation_input_tokens, cache_read_input_tokens)
+    // $meta->model    — resolved model id (nullable)
+    // $meta->requestId — provider request-id header, falling back to body id
+    // $meta->rawBody   — full response body (e.g. for response hashing)
+    recordCost($prompt, $meta); // compute USD in your app layer
+}
+```
+
+The package stays **cost-agnostic**: it only retains the raw `usage` map and
+leaves pricing/USD conversion to the application. `PoolCallMeta` is an
+immutable value object (`Kent013\PrismPrompt\Values\PoolCallMeta`).
+
 ## Internal hooks (`@internal`)
 
-`Prompt::renderUserPromptForPool()` and `parseResponseForPool()` are
-`public` but marked `@internal` — they exist so `PromptPool` and direct-HTTP
-request builders can bridge to the subclass's protected `render()` /
-`parseResponse()` without reflection. **They are not covered by SemVer
-BC promises**; end-user code should continue using `executeSync()` /
-`execute()`.
+`Prompt::renderUserPromptForPool()`, `parseResponseForPool()` and
+`capturePoolCallMeta()` are `public` but marked `@internal` — they exist so
+`PromptPool` and direct-HTTP request builders can bridge to the subclass's
+protected `render()` / `parseResponse()` without reflection. **They are not
+covered by SemVer BC promises**; end-user code should continue using
+`executeSync()` / `execute()`, and read pooled usage via the supported
+`getPoolCallMeta()` accessor.
 
 See [`examples/09-prompt-pool-parallel.php`](../examples/09-prompt-pool-parallel.php)
 for a runnable rubric-grading example.

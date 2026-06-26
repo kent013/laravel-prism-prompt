@@ -2,7 +2,7 @@
     "name": "kent013/laravel-prism-prompt",
     "description": "Laravel Mailable-like API for LLM prompts with Prism",
     "type": "library",
-    "version": "0.16.0",
+    "version": "0.17.0",
     "license": "MIT",
     "authors": [
         {

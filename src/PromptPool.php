@@ -155,6 +155,14 @@ final class PromptPool
         // full raw body is handed to the prompt so response-gate / canary
         // scanning can cover every content block, not just the tool input.
         $rawBody = (string) $response->body();
+
+        // Capture provider call telemetry (usage / model / request-id + raw
+        // body) on the prompt. The pool/warmup path bypasses executePrism()
+        // and never emits PromptExecutionCompleted, so this is the only hook
+        // the app layer has to record per-axis LLM cost (F-COST-01). The
+        // package stays cost-agnostic and only retains the raw usage map.
+        self::capturePoolCallMeta($prompt, $response, $rawBody);
+
         $content = $response->json('content');
         if (is_array($content)) {
             foreach ($content as $block) {
@@ -174,6 +182,34 @@ final class PromptPool
         Assert::string($text, 'Anthropic response missing content[0].text');
 
         return $prompt->parseResponseForPool($text);
+    }
+
+    /**
+     * Extract usage / model / request-id from an Anthropic Messages response
+     * and hand them to the prompt. Provider request-id is read from the
+     * `request-id` response header (Anthropic), falling back to the message
+     * `id` field in the body.
+     *
+     * @param  Prompt<mixed>  $prompt
+     */
+    private static function capturePoolCallMeta(Prompt $prompt, Response $response, string $rawBody): void
+    {
+        $usage = $response->json('usage');
+        $model = $response->json('model');
+        $bodyId = $response->json('id');
+
+        $headerRequestId = $response->header('request-id');
+        $requestId = $headerRequestId !== '' ? $headerRequestId : null;
+        if ($requestId === null && is_string($bodyId) && $bodyId !== '') {
+            $requestId = $bodyId;
+        }
+
+        $prompt->capturePoolCallMeta(
+            is_array($usage) ? $usage : null,
+            is_string($model) && $model !== '' ? $model : null,
+            $requestId,
+            $rawBody,
+        );
     }
 
     private static function assertSuccessful(Response $response): void

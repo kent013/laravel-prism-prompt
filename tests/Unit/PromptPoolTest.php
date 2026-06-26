@@ -270,6 +270,72 @@ it('does not leak the Anthropic API key into PoolExecutionException messages', f
     }
 });
 
+it('captures pool call meta (usage / model / request-id / raw body) on the prompt after parse', function (): void {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'id' => 'msg_pool_001',
+            'model' => 'claude-sonnet-4-5-20250929',
+            'content' => [['type' => 'text', 'text' => 'ok']],
+            'usage' => [
+                'input_tokens' => 1200,
+                'output_tokens' => 340,
+                'cache_creation_input_tokens' => 50,
+                'cache_read_input_tokens' => 800,
+            ],
+        ], 200, ['request-id' => 'req_header_xyz']),
+    ]);
+
+    $prompt = new PoolPrompt(axis: 'useful');
+    PromptPool::executeWithWarmup([$prompt]);
+
+    $meta = $prompt->getPoolCallMeta();
+    expect($meta)->not->toBeNull();
+    expect($meta->usage)->toBe([
+        'input_tokens' => 1200,
+        'output_tokens' => 340,
+        'cache_creation_input_tokens' => 50,
+        'cache_read_input_tokens' => 800,
+    ]);
+    expect($meta->model)->toBe('claude-sonnet-4-5-20250929');
+    expect($meta->requestId)->toBe('req_header_xyz');
+    expect($meta->rawBody)->toContain('msg_pool_001');
+});
+
+it('falls back to the message id for request-id when the header is absent', function (): void {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'id' => 'msg_fallback_id',
+            'model' => 'claude-sonnet-4-5-20250929',
+            'content' => [['type' => 'text', 'text' => 'ok']],
+            'usage' => ['input_tokens' => 1, 'output_tokens' => 1],
+        ], 200),
+    ]);
+
+    $prompt = new PoolPrompt(axis: 'useful');
+    PromptPool::executeWithWarmup([$prompt]);
+
+    $meta = $prompt->getPoolCallMeta();
+    expect($meta)->not->toBeNull();
+    expect($meta->requestId)->toBe('msg_fallback_id');
+});
+
+it('records null usage on the prompt meta when the response carries no usage block', function (): void {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'id' => 'msg_no_usage',
+            'model' => 'claude-sonnet-4-5-20250929',
+            'content' => [['type' => 'text', 'text' => 'ok']],
+        ], 200),
+    ]);
+
+    $prompt = new PoolPrompt(axis: 'useful');
+    PromptPool::executeWithWarmup([$prompt]);
+
+    $meta = $prompt->getPoolCallMeta();
+    expect($meta)->not->toBeNull();
+    expect($meta->usage)->toBeNull();
+});
+
 it('accepts an injected MessagesRequestBuilder override', function (): void {
     Http::fake([
         'api.anthropic.com/v1/messages' => Http::response(fakeAnthropic(), 200),

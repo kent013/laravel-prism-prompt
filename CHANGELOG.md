@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-06-26
+
+### Added — pool/warmup 経路の LLM usage 捕捉
+
+`PromptPool` 経由 (warmup + parallel) の呼び出しは `executePrism()` を通らず
+`PromptExecutionCompleted` を発火しないため、pooled batch の per-call token usage が
+コスト台帳から不可視だった。pool 応答パース時に Anthropic の `usage` / `model` /
+request-id + raw body を prompt に捕捉する hook を追加し、`executeWithWarmup()` 後に
+`$prompt->getPoolCallMeta()` で out-of-band にコスト記録できるようにした。
+
+- `Prompt::getPoolCallMeta(): ?PoolCallMeta` — サポート対象の公開アクセサ
+- `Prompt::capturePoolCallMeta(...)` — `@internal` (PromptPool 専用)
+- `Kent013\PrismPrompt\Values\PoolCallMeta` — 不変値オブジェクト (usage / model / requestId / rawBody)
+- request-id は `request-id` レスポンスヘッダ優先、無ければ body の `id` に fallback
+
+package は cost を計算せず raw `usage` map のみ保持する (pricing/USD 変換はアプリ層)。
+
+#### 影響ファイル
+
+- `src/Prompt.php`
+- `src/PromptPool.php`
+- `src/Values/PoolCallMeta.php` (新規)
+- `docs/parallel-execution.md`
+
+## [0.16.0] - 2026-05-29
+
+### Added — pool path での forced tool-use (構造化出力)
+
+`PromptPool` 経由の prompt が tool_use で構造化 JSON を返せるようにした。free-form
+```` ```json ```` の構文破綻 (未エスケープ引用符等) を構造的に除去する用途。
+
+- `Prompt::getPoolToolConfig(): ?array` — null (既定) で従来挙動 (tools 付与なし=byte 互換)
+- `Prompt::parseToolInputForPool(array $input, string $rawResponseBody)` — tool input + 生 body から TResponse 構築
+- `MessagesRequestBuilder`: `getPoolToolConfig` 非 null 時のみ tools/tool_choice を組立
+- `PromptPool::parse`: content の tool_use block を優先、無ければ従来 text 抽出に fallback
+
 ## [0.15.1] - 2026-05-08
 
 ### Changed — phpdoc スタイル統一
