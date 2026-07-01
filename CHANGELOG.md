@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-07-01
+
+### Added — 単発実行 (executeSync) でのプロンプトキャッシュ
+
+`withCacheBreakpoints()` が **単発実行経路** (`executeSync()` / `execute()`、
+text と `Prism::structured()` の両方) でも cache_control を送出するようになった。
+従来 cache breakpoint は `PromptPool` 経由 (`MessagesRequestBuilder`) でしか反映されず、
+`executeSync()` では**無視されていた** (breakpoint を付けても Prism 標準経路で素通り)。
+
+`Prompt` に `resolveSystemAndMessages()` / `buildCachedSystemAndMessages()` を追加し、
+cache breakpoint 設定時は「breakpoint までの安定 `sections` + `system_prompt`」を
+cache_control(ephemeral) 付きの `SystemMessage` に、breakpoint 以降の可変 `sections` を
+`UserMessage` にまとめて Prism へ渡す。安定プレフィックスが `system` ブロックに載るため、
+prefix が大きくなりプロバイダの最小キャッシュ長 (例: Anthropic Haiku の 4096 トークン) も
+クリアしやすい。
+
+- 効果は `usage.cacheReadInputTokens` (記録される cost イベント) で観測できる。
+- **cache breakpoint 未設定のプロンプトは挙動不変** (`executePrism` / `executePrismStructured` が
+  `SystemMessage` を文字列でなくオブジェクトで `withSystemPrompt()` に渡す点のみ変更。キャッシュ
+  無しでは同一リクエスト)。
+
+#### 影響ファイル
+
+- `src/Prompt.php` — `resolveSystemAndMessages()` / `buildCachedSystemAndMessages()` 追加、
+  `executePrism()` / `executePrismStructured()` の system/message 振り分けを差し替え
+- `tests/Unit/WithCacheBreakpointsTest.php` — 単発実行キャッシュの分離テスト追加
+- `docs/parallel-execution.md`, `README.md` — 単発実行キャッシュの記述追加
+
 ## [0.17.0] - 2026-06-26
 
 ### Added — pool/warmup 経路の LLM usage 捕捉
