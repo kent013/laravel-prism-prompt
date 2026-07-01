@@ -57,6 +57,7 @@ php artisan vendor:publish --tag=prism-prompt-pricing
 | Defend against prompt injection | `UserInput::from()` + `DefensiveInstructions` | [prompt-injection](docs/prompt-injection.md) | [06](examples/06-user-input-defense.php) |
 | Multi-provider fallback (BYOK) | YAML `models[]` + `withApiKeys()` | [providers](docs/providers.md) | [08](examples/08-multi-provider-fallback.php) |
 | Parallel batch with shared cache | `PromptPool::executeWithWarmup()` | [parallel-execution](docs/parallel-execution.md) | [09](examples/09-prompt-pool-parallel.php) |
+| Prompt caching on a single `executeSync()` | `sections:` + `withCacheBreakpoints()` | [parallel-execution](docs/parallel-execution.md#caching-in-single-execution-executesync) | — |
 | Embeddings for RAG | `EmbeddingPrompt` | [embedding](docs/embedding.md) | [10](examples/10-embedding-rag.php) |
 | Chat assistant w/ history + defence | Combine `UserInput` + history override + DTO | [prompt-injection](docs/prompt-injection.md) | [11](examples/11-chatbot-with-defense.php) |
 | Multi-prompt pipeline (NPC reply → eval → hint) | Chain Prompt subclasses | [yaml-template](docs/yaml-template.md) | [12](examples/12-bundle-pipeline.php) |

@@ -114,6 +114,7 @@ abstract class Prompt implements PromptInterface
      * Create a TextPrompt instance from YAML template name
      *
      * @param  array<string, mixed>  $variables
+     *
      * @return TextPrompt
      */
     public static function load(string $name, array $variables = []): self
@@ -467,6 +468,7 @@ abstract class Prompt implements PromptInterface
      * output should override this for direct array → DTO mapping.
      *
      * @param  array<string, mixed>  $data
+     *
      * @return TResponse
      *
      * @throws JsonException
@@ -687,6 +689,84 @@ abstract class Prompt implements PromptInterface
     /**
      * Execute Prism LLM call
      */
+    /**
+     * cache breakpoint が設定されているとき、キャッシュ対象の安定プレフィックス
+     * (system_prompt + breakpoint までの sections) を cache_control 付き SystemMessage に、
+     * breakpoint 以降の可変 sections を UserMessage にまとめて返す。
+     *
+     * これにより単発実行経路 (Prism::text/structured) でも Anthropic prompt caching が効く
+     * (従来は PromptPool 経由の MessagesRequestBuilder でしか cache_control が送られなかった)。
+     * cache breakpoint が無い場合は buildMessages() を system / 非 system に振り分けるだけ。
+     *
+     * @param  array<int, Message>  $messages
+     *
+     * @return array{0: SystemMessage|null, 1: list<Message>}
+     */
+    protected function resolveSystemAndMessages(array $messages): array
+    {
+        $breakpoints = $this->getCacheBreakpoints();
+        $sections = $this->getRenderedSections();
+
+        if ($breakpoints !== [] && $sections !== []) {
+            return $this->buildCachedSystemAndMessages($sections, $breakpoints);
+        }
+
+        $system = null;
+        $nonSystem = [];
+        foreach ($messages as $message) {
+            if ($message instanceof SystemMessage) {
+                $system = $message;
+            } else {
+                $nonSystem[] = $message;
+            }
+        }
+
+        return [$system, $nonSystem];
+    }
+
+    /**
+     * @param  array<string, string>  $sections
+     * @param  array<string, CacheType>  $breakpoints
+     *
+     * @return array{0: SystemMessage, 1: list<Message>}
+     */
+    protected function buildCachedSystemAndMessages(array $sections, array $breakpoints): array
+    {
+        $names = array_keys($sections);
+        $lastBreakpointIndex = -1;
+        $cacheType = CacheType::Ephemeral;
+        foreach ($names as $index => $name) {
+            if (isset($breakpoints[$name])) {
+                $lastBreakpointIndex = $index;
+                $cacheType = $breakpoints[$name];
+            }
+        }
+
+        $cachedParts = [];
+        $volatileParts = [];
+        foreach (array_values($sections) as $index => $text) {
+            if ($index <= $lastBreakpointIndex) {
+                $cachedParts[] = $text;
+            } else {
+                $volatileParts[] = $text;
+            }
+        }
+
+        $systemBase = $this->renderSystemPrompt() ?? '';
+        $cachedText = implode("\n\n", $cachedParts);
+        $systemContent = $systemBase === ''
+            ? $cachedText
+            : rtrim($systemBase)."\n\n".$cachedText;
+
+        $system = (new SystemMessage(trim($systemContent)))
+            ->withProviderOptions(['cacheType' => $cacheType->value]);
+
+        $volatileText = trim(implode("\n\n", $volatileParts));
+        $messages = [new UserMessage($volatileText === '' ? '(no additional context)' : $volatileText)];
+
+        return [$system, $messages];
+    }
+
     protected function executePrism(): string
     {
         $messages = $this->buildMessages();
@@ -706,23 +786,15 @@ abstract class Prompt implements PromptInterface
         $executionId = (string) Str::uuid();
         $startTime = microtime(true);
 
-        // Separate SystemMessage for Anthropic compatibility
-        $systemPrompt = null;
-        $nonSystemMessages = [];
-        foreach ($messages as $message) {
-            if ($message instanceof SystemMessage) {
-                $systemPrompt = $message->content;
-            } else {
-                $nonSystemMessages[] = $message;
-            }
-        }
+        // Separate SystemMessage for Anthropic compatibility (cache breakpoint 対応込み)
+        [$systemMessage, $nonSystemMessages] = $this->resolveSystemAndMessages($messages);
 
         $builder = Prism::text()
             ->using($provider, $model, $config)
             ->withMaxTokens($this->resolveMaxTokens());
 
-        if ($systemPrompt !== null) {
-            $builder->withSystemPrompt($systemPrompt);
+        if ($systemMessage !== null) {
+            $builder->withSystemPrompt($systemMessage);
         }
 
         if ($nonSystemMessages !== []) {
@@ -828,23 +900,15 @@ abstract class Prompt implements PromptInterface
         $executionId = (string) Str::uuid();
         $startTime = microtime(true);
 
-        $systemPrompt = null;
-        $nonSystemMessages = [];
-        foreach ($messages as $message) {
-            if ($message instanceof SystemMessage) {
-                $systemPrompt = $message->content;
-            } else {
-                $nonSystemMessages[] = $message;
-            }
-        }
+        [$systemMessage, $nonSystemMessages] = $this->resolveSystemAndMessages($messages);
 
         $builder = Prism::structured()
             ->withSchema($schema)
             ->using($provider, $model, $config)
             ->withMaxTokens($this->resolveMaxTokens());
 
-        if ($systemPrompt !== null) {
-            $builder->withSystemPrompt($systemPrompt);
+        if ($systemMessage !== null) {
+            $builder->withSystemPrompt($systemMessage);
         }
 
         if ($nonSystemMessages !== []) {

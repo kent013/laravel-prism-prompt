@@ -44,6 +44,33 @@ prompt: |
 
 `shared` is byte-stable across the whole batch; `axis` differs per call.
 
+## Caching in single execution (`executeSync`)
+
+Since **v0.16.0**, `withCacheBreakpoints()` also applies to single-shot
+execution (`executeSync()` / `execute()`, both the text and
+`Prism::structured()` paths) — not just `PromptPool`. When breakpoints are
+set, the stable prefix (the `system_prompt` plus every `sections` entry up to
+and including the breakpoint) is sent as a **cache-marked `system` block**, and
+the remaining volatile sections become the user message:
+
+```php
+use Kent013\PrismPrompt\Values\CacheType;
+
+$dto = HeuristicAxisPrompt::load('heuristic/useful', $shared)
+    ->withCacheBreakpoints(['shared' => CacheType::Ephemeral])
+    ->executeSync();
+```
+
+Because the stable prefix rides in the `system` block, the cached prefix is
+larger and clears provider minimum-cache thresholds (e.g. Anthropic Haiku's
+4096-token minimum) that a user-only prefix can miss. Repeated calls sharing
+the same stable prefix (the same conversation, or the same scenario across
+users within the cache TTL) read from cache at ~0.1x input price. Verify with
+`usage.cacheReadInputTokens` on the recorded cost event.
+
+Prompts without cache breakpoints are unaffected (system + user messages are
+built exactly as before).
+
 ## Run the pool
 
 ```php

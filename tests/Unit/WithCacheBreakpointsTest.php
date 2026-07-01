@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Kent013\PrismPrompt\Exceptions\InvalidCacheBreakpointException;
 use Kent013\PrismPrompt\Prompt;
 use Kent013\PrismPrompt\Values\CacheType;
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 
 class SectionsPrompt extends Prompt
 {
@@ -95,4 +97,49 @@ it('returns empty list for getImagePaths() by default', function (): void {
     $prompt = new SectionsPrompt;
 
     expect($prompt->getImagePaths())->toBe([]);
+});
+
+/**
+ * resolveSystemAndMessages() を単体検証するため protected を公開する probe。
+ */
+class SingleExecCacheProbe extends SectionsPrompt
+{
+    /**
+     * @return array{0: SystemMessage|null, 1: list<Prism\Prism\Contracts\Message>}
+     */
+    public function resolveForTest(): array
+    {
+        return $this->resolveSystemAndMessages($this->buildMessages());
+    }
+}
+
+it('single execution: cache breakpoint 設定時は安定 prefix を cache付き system・可変を user に分離する', function (): void {
+    $prompt = new SingleExecCacheProbe(topic: 'seo', axis: 'useful');
+    $prompt->withCacheBreakpoints(['shared' => CacheType::Ephemeral]);
+
+    [$system, $messages] = $prompt->resolveForTest();
+
+    // system_prompt + breakpoint までの安定 section (shared) が cache付き system に載る
+    expect($system)->toBeInstanceOf(SystemMessage::class);
+    expect($system->content)->toContain('You are a helpful assistant.')
+        ->and($system->content)->toContain('Shared context: seo.');
+    expect($system->providerOptions('cacheType'))->toBe('ephemeral');
+
+    // breakpoint 以降の可変 section (axis) は user 側。安定 section は混ざらない (prefix 汚染防止)。
+    expect($messages)->toHaveCount(1);
+    expect($messages[0])->toBeInstanceOf(UserMessage::class);
+    expect($messages[0]->text())->toContain('Focus axis: useful.')
+        ->and($messages[0]->text())->not->toContain('Shared context');
+});
+
+it('single execution: cache breakpoint 無しは従来どおり (cache無し system + user=render)', function (): void {
+    $prompt = new SingleExecCacheProbe;
+
+    [$system, $messages] = $prompt->resolveForTest();
+
+    expect($system)->toBeInstanceOf(SystemMessage::class);
+    expect($system->providerOptions('cacheType'))->toBeNull();
+    expect($messages)->toHaveCount(1);
+    expect($messages[0])->toBeInstanceOf(UserMessage::class);
+    expect($messages[0]->text())->toContain('Proceed with the analysis.');
 });
