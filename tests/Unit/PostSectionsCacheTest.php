@@ -140,6 +140,48 @@ it('flags the last section block as prefix end when there are no images', functi
     expect($content[2])->not->toHaveKey('cache_control');
 });
 
+it('flags the last image as prefix end for a sections-less prompt with images (fallback body + images)', function (): void {
+    // Codex impl-review R1 Warning の境界固定: sections=[] でも images があれば
+    // fallback prompt body → images の順で blocks が構築され、最終画像が prefix end になる。
+    $png = makeTempPng();
+    $prompt = new class($png) extends Prompt
+    {
+        public function __construct(private readonly string $png)
+        {
+            parent::__construct();
+        }
+
+        public string $userName = 'cache';
+
+        protected function getTemplatePath(): string
+        {
+            return __DIR__.'/../fixtures/prompts/test.yaml';
+        }
+
+        /** @return list<string> */
+        public function getImagePaths(): array
+        {
+            return [$this->png];
+        }
+
+        /** @return array<string, mixed> */
+        protected function parseResponse(string $responseText): array
+        {
+            return [];
+        }
+    };
+    $prompt->withCacheBreakpoints([Prompt::CACHE_BREAKPOINT_PREFIX_END => CacheType::Ephemeral]);
+
+    $content = (new MessagesRequestBuilder('test-key'))->build($prompt)['body']['messages'][0]['content'];
+    @unlink($png);
+
+    expect($content)->toHaveCount(2);
+    expect($content[0]['type'])->toBe('text'); // fallback prompt body
+    expect($content[0])->not->toHaveKey('cache_control');
+    expect($content[1]['type'])->toBe('image');
+    expect($content[1]['cache_control'])->toBe(['type' => 'ephemeral']);
+});
+
 it('throws when __prefix_end is set but the prompt has neither sections nor images', function (): void {
     $prompt = new class extends Prompt
     {
