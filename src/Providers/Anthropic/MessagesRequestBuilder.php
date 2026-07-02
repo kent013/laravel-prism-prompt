@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kent013\PrismPrompt\Providers\Anthropic;
 
+use Kent013\PrismPrompt\Exceptions\InvalidCacheBreakpointException;
 use Kent013\PrismPrompt\Prompt;
 use Kent013\PrismPrompt\PromptPool;
 use Kent013\PrismPrompt\Values\CacheType;
@@ -52,6 +53,7 @@ final class MessagesRequestBuilder
 
     /**
      * @param  Prompt<mixed>  $prompt
+     *
      * @return array{
      *     url: string,
      *     headers: array<string, string>,
@@ -77,7 +79,13 @@ final class MessagesRequestBuilder
 
         $systemPrompt = $prompt->getRenderedSystemPrompt();
         if ($systemPrompt !== '') {
-            $body['system'] = $systemPrompt;
+            // `__system` breakpoint: emit the system prompt as a text-block
+            // array with cache_control so it joins the shared cache prefix.
+            // Without the breakpoint the legacy string shape is kept so the
+            // request body stays byte-identical (existing cache keys intact).
+            $body['system'] = $this->hasEphemeralBreakpoint($prompt, Prompt::CACHE_BREAKPOINT_SYSTEM)
+                ? [['type' => 'text', 'text' => $systemPrompt, 'cache_control' => ['type' => 'ephemeral']]]
+                : $systemPrompt;
         }
 
         // Forced tool-use (structured output) for prompts that opt in. When the
@@ -104,12 +112,23 @@ final class MessagesRequestBuilder
 
     /**
      * @param  Prompt<mixed>  $prompt
+     *
      * @return list<array<string, mixed>>
      */
     private function buildContentBlocks(Prompt $prompt): array
     {
         $sections = $prompt->getRenderedSections();
         $breakpoints = $prompt->getCacheBreakpoints();
+        $prefixEnd = $this->hasEphemeralBreakpoint($prompt, Prompt::CACHE_BREAKPOINT_PREFIX_END);
+
+        // `__prefix_end` is only meaningful for prompts composed of sections
+        // and/or images. A silent no-op (or flagging the fallback prompt body)
+        // would hide a missing cache prefix, so fail fast instead.
+        if ($prefixEnd && $sections === [] && $prompt->getImagePaths() === []) {
+            throw new InvalidCacheBreakpointException(
+                '__prefix_end requires at least one section or image block'
+            );
+        }
 
         if ($sections === []) {
             // Fall back to the rendered prompt body so that callers who
@@ -133,7 +152,25 @@ final class MessagesRequestBuilder
             $blocks[] = $this->buildImageBlock($imagePath);
         }
 
+        // `__prefix_end` breakpoint: flag the end of the shared prefix — the
+        // last image block when images exist, otherwise the last regular
+        // section block. Post sections are appended after this boundary so a
+        // per-prompt suffix never fragments the shared cache prefix.
+        if ($prefixEnd) {
+            $blocks[count($blocks) - 1]['cache_control'] = ['type' => 'ephemeral'];
+        }
+
+        foreach ($prompt->getRenderedPostSections() as $text) {
+            $blocks[] = ['type' => 'text', 'text' => $text]; // outside the cache prefix
+        }
+
         return $blocks;
+    }
+
+    /** @param  Prompt<mixed>  $prompt */
+    private function hasEphemeralBreakpoint(Prompt $prompt, string $key): bool
+    {
+        return ($prompt->getCacheBreakpoints()[$key] ?? null) === CacheType::Ephemeral;
     }
 
     /** @return array<string, string> */

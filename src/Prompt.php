@@ -53,6 +53,30 @@ abstract class Prompt implements PromptInterface
 {
     use ResolvesProviderConfig;
 
+    /**
+     * Special cache-breakpoint key (v0.18.0): when flagged, provider request
+     * builders emit the rendered `system_prompt` as a text-block array with
+     * `cache_control: ephemeral` instead of a plain string, so the system
+     * prompt participates in the provider's shared cache prefix.
+     */
+    public const CACHE_BREAKPOINT_SYSTEM = '__system';
+
+    /**
+     * Special cache-breakpoint key (v0.18.0): when flagged, provider request
+     * builders put `cache_control: ephemeral` on the final block of the shared
+     * prefix — the last image block when images exist, otherwise the last
+     * regular section block. `post_sections` are appended after this boundary
+     * and are intentionally excluded (they are the per-prompt suffix that must
+     * stay outside the cache prefix).
+     */
+    public const CACHE_BREAKPOINT_PREFIX_END = '__prefix_end';
+
+    /** @var list<string> */
+    private const SPECIAL_CACHE_BREAKPOINT_KEYS = [
+        self::CACHE_BREAKPOINT_SYSTEM,
+        self::CACHE_BREAKPOINT_PREFIX_END,
+    ];
+
     protected static ?PromptFake $fake = null;
 
     protected ?int $maxTokens = null;
@@ -227,10 +251,13 @@ abstract class Prompt implements PromptInterface
 
     /**
      * Mark YAML sections whose rendered content should be cached by the
-     * provider (e.g. Anthropic prompt caching). Each section name must match
-     * a key under the YAML `sections:` map; unknown section names raise
-     * InvalidCacheBreakpointException so typos fail fast rather than
-     * silently disabling caching.
+     * provider (e.g. Anthropic prompt caching). Each key must be either a
+     * section name under the YAML `sections:` map or one of the special keys
+     * ({@see self::CACHE_BREAKPOINT_SYSTEM} / {@see self::CACHE_BREAKPOINT_PREFIX_END}).
+     * Unknown names raise InvalidCacheBreakpointException so typos fail fast
+     * rather than silently disabling caching. `post_sections` names are
+     * rejected with a dedicated message: the post sections are the per-prompt
+     * suffix and caching one would re-introduce a per-prompt cache write.
      *
      * @param  array<string, CacheType>  $sectionToCacheType
      */
@@ -238,10 +265,20 @@ abstract class Prompt implements PromptInterface
     {
         $sections = $this->metadata['sections'] ?? [];
         Assert::isArray($sections, 'YAML `sections` must be an associative array when using cache breakpoints');
+        $postSections = $this->metadata['post_sections'] ?? [];
+        Assert::isArray($postSections, 'YAML `post_sections` must be an associative array when using cache breakpoints');
 
         foreach ($sectionToCacheType as $sectionName => $cacheType) {
             Assert::string($sectionName, 'cache breakpoint section name must be a string');
             Assert::isInstanceOf($cacheType, CacheType::class);
+            if (in_array($sectionName, self::SPECIAL_CACHE_BREAKPOINT_KEYS, true)) {
+                continue;
+            }
+            if (array_key_exists($sectionName, $postSections)) {
+                throw new InvalidCacheBreakpointException(
+                    "post section '{$sectionName}' cannot carry a cache breakpoint (suffix must stay outside the cache prefix)"
+                );
+            }
             if (! array_key_exists($sectionName, $sections)) {
                 throw new InvalidCacheBreakpointException(
                     "Section '{$sectionName}' is not defined under YAML `sections:` key"
@@ -283,6 +320,35 @@ abstract class Prompt implements PromptInterface
         foreach ($sections as $name => $template) {
             Assert::string($name, 'YAML section names must be strings');
             Assert::string($template, "YAML section '{$name}' value must be a string");
+            $rendered[$name] = Blade::render($template, $variables);
+        }
+
+        return $rendered;
+    }
+
+    /**
+     * Render each YAML `post_sections:` entry through Blade and return the
+     * map of post-section name → rendered text (declaration order preserved).
+     * Post sections are appended by provider request builders *after* the
+     * regular sections and image blocks — i.e. after the shared cache prefix
+     * — so per-prompt suffix content (e.g. a per-axis checklist) does not
+     * fragment the provider cache. Returns an empty array when the YAML does
+     * not declare `post_sections:`.
+     *
+     * @return array<string, string>
+     */
+    public function getRenderedPostSections(): array
+    {
+        $postSections = $this->metadata['post_sections'] ?? [];
+        if (! is_array($postSections) || $postSections === []) {
+            return [];
+        }
+
+        $variables = $this->resolveTemplateVariables();
+        $rendered = [];
+        foreach ($postSections as $name => $template) {
+            Assert::string($name, 'YAML post_section names must be strings');
+            Assert::string($template, "YAML post_section '{$name}' value must be a string");
             $rendered[$name] = Blade::render($template, $variables);
         }
 
@@ -398,6 +464,7 @@ abstract class Prompt implements PromptInterface
      * input directly.
      *
      * @param  array<string, mixed>  $input
+     *
      * @return TResponse
      *
      * @internal Intended for package-internal use by PromptPool.
@@ -704,7 +771,16 @@ abstract class Prompt implements PromptInterface
      */
     protected function resolveSystemAndMessages(array $messages): array
     {
-        $breakpoints = $this->getCacheBreakpoints();
+        // Special keys (`__system` / `__prefix_end`, v0.19.0) describe the
+        // direct Messages API request shape used by PromptPool /
+        // MessagesRequestBuilder. They carry no section-split semantics for
+        // the single-shot Prism path, so exclude them here — otherwise a
+        // special-keys-only prompt would be rebuilt into a section-derived
+        // system/user pair (dropping images and post sections).
+        $breakpoints = array_diff_key(
+            $this->getCacheBreakpoints(),
+            array_flip(self::SPECIAL_CACHE_BREAKPOINT_KEYS),
+        );
         $sections = $this->getRenderedSections();
 
         if ($breakpoints !== [] && $sections !== []) {

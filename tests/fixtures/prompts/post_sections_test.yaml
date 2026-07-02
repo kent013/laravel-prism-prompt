@@ -1,0 +1,20 @@
+name: post_sections_test
+provider: anthropic
+model: claude-sonnet-4-5-20250929
+max_tokens: 1024
+
+system_prompt: |
+  You are a helpful assistant.
+
+sections:
+  shared: |
+    Shared context: {{ $topic }}.
+
+post_sections:
+  axis: |
+    Focus axis: {{ $axis }}.
+  closing: |
+    Answer for topic {{ $topic }} on axis {{ $axis }}.
+
+prompt: |
+  Proceed with the analysis.
