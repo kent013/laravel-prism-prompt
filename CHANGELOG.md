@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.19.0] - 2026-07-06
+## [0.20.0] - 2026-07-06
 
 ### Added — カスタム関数ツール (`withTools`)
 
@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `src/Prompt.php`: `$tools` プロパティ + `withTools()` + `resolveTools()` +
   `executePrism()` / `executePrismStructured()` への `withTools` 配線
+
+## [0.19.1] - 2026-07 (記録の補完)
+
+- images-only の `__prefix_end` 境界の regression fix（release/v0.19.1 由来。リリース時に CHANGELOG 未記載だったため 0.20.0 で補完）
+
+## [0.19.0] - 2026-07 (記録の補完)
+
+- `post_sections` + 特殊 cache breakpoint keys (`__system` / `__prefix_end`) による shared-prefix caching（release/v0.19.0 由来。同上）
 
 ## [0.18.0] - 2026-07-01
 
