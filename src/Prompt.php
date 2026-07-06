@@ -114,7 +114,6 @@ abstract class Prompt implements PromptInterface
      * Create a TextPrompt instance from YAML template name
      *
      * @param  array<string, mixed>  $variables
-     *
      * @return TextPrompt
      */
     public static function load(string $name, array $variables = []): self
@@ -468,7 +467,6 @@ abstract class Prompt implements PromptInterface
      * output should override this for direct array → DTO mapping.
      *
      * @param  array<string, mixed>  $data
-     *
      * @return TResponse
      *
      * @throws JsonException
@@ -699,7 +697,6 @@ abstract class Prompt implements PromptInterface
      * cache breakpoint が無い場合は buildMessages() を system / 非 system に振り分けるだけ。
      *
      * @param  array<int, Message>  $messages
-     *
      * @return array{0: SystemMessage|null, 1: list<Message>}
      */
     protected function resolveSystemAndMessages(array $messages): array
@@ -727,7 +724,6 @@ abstract class Prompt implements PromptInterface
     /**
      * @param  array<string, string>  $sections
      * @param  array<string, CacheType>  $breakpoints
-     *
      * @return array{0: SystemMessage, 1: list<Message>}
      */
     protected function buildCachedSystemAndMessages(array $sections, array $breakpoints): array
