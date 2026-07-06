@@ -26,6 +26,7 @@ use Prism\Prism\Contracts\Schema;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Text\Response as TextResponse;
+use Prism\Prism\Tool;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\ProviderTool;
@@ -85,6 +86,9 @@ abstract class Prompt implements PromptInterface
 
     /** @var array<int, ProviderTool> */
     protected array $providerTools = [];
+
+    /** @var array<int, Tool> */
+    protected array $tools = [];
 
     protected ?int $maxSteps = null;
 
@@ -211,6 +215,21 @@ abstract class Prompt implements PromptInterface
     public function withProviderTools(array $providerTools): static
     {
         $this->providerTools = $providerTools;
+
+        return $this;
+    }
+
+    /**
+     * Set custom function tools (Prism\Prism\Tool with closure handlers).
+     *
+     * Unlike provider tools, custom tools carry PHP closures and therefore
+     * cannot be declared in YAML — the class property is the only source.
+     *
+     * @param  array<int, Tool>  $tools
+     */
+    public function withTools(array $tools): static
+    {
+        $this->tools = $tools;
 
         return $this;
     }
@@ -882,6 +901,11 @@ abstract class Prompt implements PromptInterface
             $builder->withProviderTools($resolvedProviderTools);
         }
 
+        $resolvedTools = $this->resolveTools();
+        if ($resolvedTools !== []) {
+            $builder->withTools($resolvedTools);
+        }
+
         $resolvedMaxSteps = $this->resolveMaxSteps();
         if ($resolvedMaxSteps !== null) {
             $builder->withMaxSteps($resolvedMaxSteps);
@@ -954,7 +978,7 @@ abstract class Prompt implements PromptInterface
      * Execute Prism::structured() with the given schema and return the
      * decoded structured array. Mirrors executePrism() one-for-one for
      * builder configuration (system prompt / messages / provider tools /
-     * max steps / client options) and event emission semantics.
+     * custom tools / max steps / client options) and event emission semantics.
      *
      * @return array<string, mixed>
      */
@@ -994,6 +1018,11 @@ abstract class Prompt implements PromptInterface
         $resolvedProviderTools = $this->resolveProviderTools();
         if ($resolvedProviderTools !== []) {
             $builder->withProviderTools($resolvedProviderTools);
+        }
+
+        $resolvedTools = $this->resolveTools();
+        if ($resolvedTools !== []) {
+            $builder->withTools($resolvedTools);
         }
 
         $resolvedMaxSteps = $this->resolveMaxSteps();
@@ -1189,6 +1218,17 @@ abstract class Prompt implements PromptInterface
         }
 
         return $tools;
+    }
+
+    /**
+     * Resolve custom function tools (class property only — closures cannot
+     * live in YAML, so there is no YAML fallback unlike provider tools).
+     *
+     * @return array<int, Tool>
+     */
+    protected function resolveTools(): array
+    {
+        return $this->tools;
     }
 
     /**

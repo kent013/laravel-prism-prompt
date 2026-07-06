@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-07-06
+
+### Added — カスタム関数ツール (`withTools`)
+
+`Prism\Prism\Tool`（closure handler 付きのカスタム関数ツール）を単発実行経路
+(`executeSync()` / `execute()`、text と structured の両方) に渡せる
+`withTools(array $tools)` / `resolveTools()` を追加した。
+
+- ツールは closure を持つため **YAML では宣言できない**（クラスプロパティのみ。
+  `provider_tools` / `max_steps` と異なり YAML fallback は無い）。
+- `resolveTools()` が空配列を返す場合は従来と同一リクエスト（後方互換）。
+- ツールループ（tool call → closure 実行 → 継続）は Prism のプロバイダハンドラ内で
+  完結し、`withMaxSteps()` / YAML `max_steps` が上限になる。累計 usage / stepCount は
+  従来どおり `PromptExecutionCompleted` に載る。
+
+#### 影響ファイル
+
+- `src/Prompt.php`: `$tools` プロパティ + `withTools()` + `resolveTools()` +
+  `executePrism()` / `executePrismStructured()` への `withTools` 配線
+
 ## [0.18.0] - 2026-07-01
 
 ### Added — 単発実行 (executeSync) でのプロンプトキャッシュ
