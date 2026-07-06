@@ -337,3 +337,27 @@ it('case 16: Prompt::fake が JSON int scalar を返した場合 Assert 失敗 (
     expect(fn () => (new StructuredTestPrompt('taro'))->executeSync())
         ->toThrow(InvalidJsonResponseException::class, 'non-object JSON value');
 });
+
+it('custom tools are mirrored onto the Prism structured request (withTools)', function () {
+    $fake = Prism::fake([
+        StructuredResponseFake::make()
+            ->withStructured(['greeting' => 'hi taro', 'score' => 0.9])
+            ->withUsage(new Usage(10, 20))
+            ->withFinishReason(FinishReason::Stop),
+    ]);
+
+    $tool = (new \Prism\Prism\Tool)
+        ->as('fixture_search')
+        ->for('search fixtures')
+        ->withStringParameter('query', 'search query')
+        ->using(fn (string $query): string => 'result');
+
+    $prompt = new StructuredTestPrompt('taro');
+    $prompt->withTools([$tool]);
+    $prompt->executeSync();
+
+    $fake->assertRequest(function (array $requests) use ($tool): void {
+        expect($requests)->toHaveCount(1);
+        expect($requests[0]->tools())->toBe([$tool]);
+    });
+});

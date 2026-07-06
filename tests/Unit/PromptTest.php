@@ -862,3 +862,68 @@ it('installFake accepts PromptFake subclasses', function (): void {
 
     Prompt::stopFaking();
 });
+
+// Custom function tools (withTools / resolveTools) support tests — v0.19.0
+
+it('withTools returns fluent instance', function (): void {
+    $prompt = new FeaturesPrompt('AI');
+    $tool = (new \Prism\Prism\Tool)
+        ->as('fixture_search')
+        ->for('search fixtures')
+        ->withStringParameter('query', 'search query')
+        ->using(fn (string $query): string => 'result');
+
+    $result = $prompt->withTools([$tool]);
+
+    expect($result)->toBe($prompt);
+});
+
+it('resolveTools defaults to empty array (no YAML fallback)', function (): void {
+    $prompt = new TestPrompt('Alice');
+
+    $reflection = new ReflectionMethod($prompt, 'resolveTools');
+    $reflection->setAccessible(true);
+
+    expect($reflection->invoke($prompt))->toBe([]);
+});
+
+it('executeSync passes custom tools to the Prism text request', function (): void {
+    $fake = \Prism\Prism\Facades\Prism::fake([
+        \Prism\Prism\Testing\TextResponseFake::make()
+            ->withText('{"message": "ok"}')
+            ->withUsage(new \Prism\Prism\ValueObjects\Usage(5, 10))
+            ->withFinishReason(\Prism\Prism\Enums\FinishReason::Stop),
+    ]);
+
+    $tool = (new \Prism\Prism\Tool)
+        ->as('fixture_search')
+        ->for('search fixtures')
+        ->withStringParameter('query', 'search query')
+        ->using(fn (string $query): string => 'result');
+
+    $prompt = new TestPrompt('Alice');
+    $prompt->withTools([$tool]);
+    $prompt->executeSync();
+
+    $fake->assertRequest(function (array $requests) use ($tool): void {
+        expect($requests)->toHaveCount(1);
+        expect($requests[0]->tools())->toBe([$tool]);
+    });
+});
+
+it('executeSync sends no custom tools when withTools is not called', function (): void {
+    $fake = \Prism\Prism\Facades\Prism::fake([
+        \Prism\Prism\Testing\TextResponseFake::make()
+            ->withText('{"message": "ok"}')
+            ->withUsage(new \Prism\Prism\ValueObjects\Usage(5, 10))
+            ->withFinishReason(\Prism\Prism\Enums\FinishReason::Stop),
+    ]);
+
+    $prompt = new TestPrompt('Alice');
+    $prompt->executeSync();
+
+    $fake->assertRequest(function (array $requests): void {
+        expect($requests)->toHaveCount(1);
+        expect($requests[0]->tools())->toBe([]);
+    });
+});
