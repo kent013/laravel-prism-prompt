@@ -660,7 +660,11 @@ it('loads prompt with system_prompt via Prompt::load', function (): void {
 // ProviderTools, maxSteps, clientOptions support tests
 
 use Kent013\PrismPrompt\Testing\PromptFake;
+use Prism\Prism\Enums\FinishReason;
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\Tool;
 use Prism\Prism\ValueObjects\ProviderTool;
+use Prism\Prism\ValueObjects\Usage;
 
 class FeaturesPrompt extends Prompt
 {
@@ -867,7 +871,7 @@ it('installFake accepts PromptFake subclasses', function (): void {
 
 it('withTools returns fluent instance', function (): void {
     $prompt = new FeaturesPrompt('AI');
-    $tool = (new \Prism\Prism\Tool)
+    $tool = (new Tool)
         ->as('fixture_search')
         ->for('search fixtures')
         ->withStringParameter('query', 'search query')
@@ -888,14 +892,14 @@ it('resolveTools defaults to empty array (no YAML fallback)', function (): void 
 });
 
 it('executeSync passes custom tools to the Prism text request', function (): void {
-    $fake = \Prism\Prism\Facades\Prism::fake([
+    $fake = Prism::fake([
         \Prism\Prism\Testing\TextResponseFake::make()
             ->withText('{"message": "ok"}')
-            ->withUsage(new \Prism\Prism\ValueObjects\Usage(5, 10))
-            ->withFinishReason(\Prism\Prism\Enums\FinishReason::Stop),
+            ->withUsage(new Usage(5, 10))
+            ->withFinishReason(FinishReason::Stop),
     ]);
 
-    $tool = (new \Prism\Prism\Tool)
+    $tool = (new Tool)
         ->as('fixture_search')
         ->for('search fixtures')
         ->withStringParameter('query', 'search query')
@@ -912,11 +916,11 @@ it('executeSync passes custom tools to the Prism text request', function (): voi
 });
 
 it('executeSync sends no custom tools when withTools is not called', function (): void {
-    $fake = \Prism\Prism\Facades\Prism::fake([
+    $fake = Prism::fake([
         \Prism\Prism\Testing\TextResponseFake::make()
             ->withText('{"message": "ok"}')
-            ->withUsage(new \Prism\Prism\ValueObjects\Usage(5, 10))
-            ->withFinishReason(\Prism\Prism\Enums\FinishReason::Stop),
+            ->withUsage(new Usage(5, 10))
+            ->withFinishReason(FinishReason::Stop),
     ]);
 
     $prompt = new TestPrompt('Alice');

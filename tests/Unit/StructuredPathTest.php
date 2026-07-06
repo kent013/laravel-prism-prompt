@@ -18,6 +18,7 @@ use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Testing\StructuredResponseFake;
 use Prism\Prism\Testing\TextResponseFake as PrismTextResponseFake;
 use Prism\Prism\Text\Response as TextResponse;
+use Prism\Prism\Tool;
 use Prism\Prism\ValueObjects\Usage;
 
 afterEach(function () {
@@ -346,7 +347,7 @@ it('custom tools are mirrored onto the Prism structured request (withTools)', fu
             ->withFinishReason(FinishReason::Stop),
     ]);
 
-    $tool = (new \Prism\Prism\Tool)
+    $tool = (new Tool)
         ->as('fixture_search')
         ->for('search fixtures')
         ->withStringParameter('query', 'search query')
