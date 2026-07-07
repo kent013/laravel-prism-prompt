@@ -53,7 +53,6 @@ final class MessagesRequestBuilder
 
     /**
      * @param  Prompt<mixed>  $prompt
-     *
      * @return array{
      *     url: string,
      *     headers: array<string, string>,
@@ -112,7 +111,6 @@ final class MessagesRequestBuilder
 
     /**
      * @param  Prompt<mixed>  $prompt
-     *
      * @return list<array<string, mixed>>
      */
     private function buildContentBlocks(Prompt $prompt): array

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Kent013\PrismPrompt\Exceptions\InvalidCacheBreakpointException;
 use Kent013\PrismPrompt\Prompt;
 use Kent013\PrismPrompt\Values\CacheType;
+use Prism\Prism\Contracts\Message;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 
@@ -105,7 +106,7 @@ it('returns empty list for getImagePaths() by default', function (): void {
 class SingleExecCacheProbe extends SectionsPrompt
 {
     /**
-     * @return array{0: SystemMessage|null, 1: list<Prism\Prism\Contracts\Message>}
+     * @return array{0: SystemMessage|null, 1: list<Message>}
      */
     public function resolveForTest(): array
     {

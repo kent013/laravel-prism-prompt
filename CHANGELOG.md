@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.1] - 2026-07-07
+
+### Fixed — style: v0.19.x 系統コードの pint 準拠
+
+v0.19.0/v0.19.1 で入った shared-prefix caching のコード（`Prompt.php` sections 処理 /
+`MessagesRequestBuilder` / `WithCacheBreakpointsTest`）に、利用側アプリ (aigenba) の
+pint 全量パス（v0.18.0 後の style 統一）が当たっていなかったため、CI の `pint --test`
+が fail していた。挙動変更なしの style-only 修正。
+
 ## [0.20.0] - 2026-07-06
 
 ### Added — カスタム関数ツール (`withTools`)
