@@ -593,7 +593,7 @@ abstract class Prompt implements PromptInterface
             return $data;
         } catch (JsonException $e) {
             Log::error('[PrismPrompt] JSON parse error', [
-                'content' => $content,
+                'content_length' => strlen($content),
                 'error' => $e->getMessage(),
             ]);
 

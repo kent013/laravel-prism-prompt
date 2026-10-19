@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Log;
 use Kent013\PrismPrompt\Exceptions\InvalidJsonResponseException;
 use Kent013\PrismPrompt\Prompt;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
@@ -205,6 +206,23 @@ it('throws exception for invalid json', function (): void {
 
     $prompt->testExtractJson('{invalid json}');
 })->throws(InvalidJsonResponseException::class, 'Failed to parse JSON');
+
+it('does not write the response body to the log when json parsing fails', function (): void {
+    $canary = 'ZQFTXCANARY7Q';
+    $content = '{"a": "'.$canary.'",}';
+    $captured = [];
+    Log::shouldReceive('error')->once()->andReturnUsing(function (string $message, array $context = []) use (&$captured): void {
+        $captured = ['message' => $message, 'context' => $context];
+    });
+
+    expect(fn () => (new TestPrompt('Alice'))->testExtractJson($content))
+        ->toThrow(InvalidJsonResponseException::class, 'Failed to parse JSON');
+
+    expect($captured['message'])->toBe('[PrismPrompt] JSON parse error')
+        ->and($captured['context'])->not->toHaveKey('content')
+        ->and($captured['context']['content_length'])->toBe(strlen($content))
+        ->and(str_contains(json_encode($captured['context'], JSON_UNESCAPED_UNICODE), $canary))->toBeFalse();
+});
 
 it('resolves settings from yaml', function (): void {
     $prompt = new TestPrompt('Alice');

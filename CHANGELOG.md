@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.2] - 2026-10-20
+
+### Fixed — JSON の解析の失敗のログに LLM の応答の全文を書かない
+
+`extractJson()` が `JsonException` を受けたときの `Log::error('[PrismPrompt] JSON parse error', ...)` が、
+文脈に LLM の応答の全文 (`content`) を載せていた。応答は利用者の自由記述を含みうるので、運用の記録に残さない。
+文脈は `content_length` (応答の長さ) と `error` (`JsonException` の文。誤りの種類と位置で本文を含まない) にした。
+メッセージの文、投げる `InvalidJsonResponseException` の文と前の例外は変えない。
+
 ## [0.20.1] - 2026-07-07
 
 ### Fixed — style: v0.19.x 系統コードの pint 準拠
