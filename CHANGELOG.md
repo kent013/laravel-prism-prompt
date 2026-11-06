@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-11-06
+
+### Added — 適応的な思考の量 (`effort`) の指定と、拒否の例外
+
+Claude Haiku 5.5 などの適応的な思考 (adaptive thinking) を行うモデルのために、依頼ごとの思考の量を指定できるようにした。
+
+- 思考の量は、クラスの性質 `$effort` → 依頼文の YAML の `effort` → 設定 `prism-prompt.default_effort` の順で決まる (`resolveEffort()`)。
+  空文字は未指定と同じ。YAML の値が文字列でなければ `InvalidArgumentException`。値の集合 (low / medium / high ほか) は提供元が決めるので固定しない。
+- 値があるときだけ、text と structured の両方の経路で Prism の provider options に `thinking: {type: adaptive}` と `effort` を載せる
+  (Prism v0.101 以降は `output_config.effort` として送る)。**値が無ければ何も載せない** (従来と同じ要求。設定の既定は `null`)。
+  メッセージの側のキャッシュの指定 (`cacheType`) とは別の場所なので同時に送れる。
+- 提供元が要求を拒んだとき (終了理由 `refusal`) は、本文の有無に依らず `Kent013\PrismPrompt\Exceptions\PromptRefusedException` を投げる。
+  Prism の `PrismException` を継承するので、`PrismException` / `Throwable` を受けている呼び出し側の失敗の扱いにそのまま入る。
+  投げる前に `PromptExecutionFailed` を出す。終了理由は列挙の名前で比べ、`Refusal` を持たない Prism の版でも壊れない。
+
+### Changed
+
+- `echolabsdev/prism` の制約に `^0.101|^0.102` を足した (既存の版は外していない)。
+- Prism v0.102 で `Meta::$id` が null を取らなくなったのに合わせ、`requestId` の `?? null` を外した。
+- `PromptFake::assertPromptContains()` は、`Message` の契約に無い `$content` を、文字列の性質として持つメッセージだけから読む。
+
+### Known limitations
+
+- 並列実行の経路 (`PromptPool` / `MessagesRequestBuilder`) は `effort` を送らず、応答の `content[0].text` を読む。
+  思考の塊 (`thinking`) で始まる応答を返すモデルでは使えない。
+
 ## [0.20.2] - 2026-10-20
 
 ### Fixed — JSON の解析の失敗のログに LLM の応答の全文を書かない

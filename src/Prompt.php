@@ -14,6 +14,7 @@ use Kent013\PrismPrompt\Events\PromptExecutionCompleted;
 use Kent013\PrismPrompt\Events\PromptExecutionFailed;
 use Kent013\PrismPrompt\Exceptions\InvalidCacheBreakpointException;
 use Kent013\PrismPrompt\Exceptions\InvalidJsonResponseException;
+use Kent013\PrismPrompt\Exceptions\PromptRefusedException;
 use Kent013\PrismPrompt\Pricing\CostCalculation;
 use Kent013\PrismPrompt\Pricing\LlmPricingService;
 use Kent013\PrismPrompt\Testing\PromptFake;
@@ -23,6 +24,7 @@ use Kent013\PrismPrompt\Values\CacheType;
 use Kent013\PrismPrompt\Values\PoolCallMeta;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Contracts\Schema;
+use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Text\Response as TextResponse;
@@ -83,6 +85,12 @@ abstract class Prompt implements PromptInterface
     protected ?int $maxTokens = null;
 
     protected ?float $temperature = null;
+
+    /**
+     * Thinking effort for models with adaptive thinking (e.g. Claude Haiku 5.5).
+     * Resolved by {@see resolveEffort()}; null sends no thinking/effort options.
+     */
+    protected ?string $effort = null;
 
     /** @var array<int, ProviderTool> */
     protected array $providerTools = [];
@@ -911,9 +919,15 @@ abstract class Prompt implements PromptInterface
             $builder->withClientOptions($resolvedClientOptions);
         }
 
+        $resolvedThinkingOptions = $this->resolveThinkingProviderOptions();
+        if ($resolvedThinkingOptions !== []) {
+            $builder->withProviderOptions($resolvedThinkingOptions);
+        }
+
         try {
             $result = $builder->asText();
             Assert::isInstanceOf($result, TextResponse::class);
+            $this->assertNotRefused($result->finishReason);
 
             $durationMs = (microtime(true) - $startTime) * 1000;
 
@@ -930,7 +944,7 @@ abstract class Prompt implements PromptInterface
                     stepCount: $result->steps->count(),
                     totalUsage: $result->usage,
                     durationMs: $durationMs,
-                    requestId: $result->meta->id ?? null,
+                    requestId: $result->meta->id,
                     response: $result,
                     metadata: $this->metadata_context,
                     cost: $cost,
@@ -1030,9 +1044,15 @@ abstract class Prompt implements PromptInterface
             $builder->withClientOptions($resolvedClientOptions);
         }
 
+        $resolvedThinkingOptions = $this->resolveThinkingProviderOptions();
+        if ($resolvedThinkingOptions !== []) {
+            $builder->withProviderOptions($resolvedThinkingOptions);
+        }
+
         try {
             $result = $builder->asStructured();
             Assert::isInstanceOf($result, StructuredResponse::class);
+            $this->assertNotRefused($result->finishReason);
 
             $durationMs = (microtime(true) - $startTime) * 1000;
 
@@ -1182,6 +1202,73 @@ abstract class Prompt implements PromptInterface
         Assert::numeric($configTemperature);
 
         return (float) $configTemperature;
+    }
+
+    /**
+     * Resolve thinking effort (class property > YAML `effort` > config `default_effort`).
+     *
+     * Returns null when none is set, in which case no thinking/effort options are
+     * sent and the request is identical to earlier versions. An empty string is
+     * treated as unset. The set of values (low / medium / high ...) is owned by the
+     * provider and is not validated here; an unknown value is rejected by the provider.
+     */
+    protected function resolveEffort(): ?string
+    {
+        if ($this->effort !== null && $this->effort !== '') {
+            return $this->effort;
+        }
+
+        $yamlEffort = $this->metadata['effort'] ?? null;
+        if ($yamlEffort !== null) {
+            if (! is_string($yamlEffort)) {
+                throw new InvalidArgumentException('Prompt YAML `effort` must be a string');
+            }
+            if ($yamlEffort !== '') {
+                return $yamlEffort;
+            }
+        }
+
+        $configEffort = config('prism-prompt.default_effort');
+        if ($configEffort === null || $configEffort === '') {
+            return null;
+        }
+        if (! is_string($configEffort)) {
+            throw new InvalidArgumentException('Config `prism-prompt.default_effort` must be a string or null');
+        }
+
+        return $configEffort;
+    }
+
+    /**
+     * Request-level provider options for adaptive thinking.
+     *
+     * Empty when {@see resolveEffort()} is null. Message-level provider options
+     * (cache control) are set on the messages and are not affected.
+     *
+     * @return array<string, mixed>
+     */
+    protected function resolveThinkingProviderOptions(): array
+    {
+        $effort = $this->resolveEffort();
+        if ($effort === null) {
+            return [];
+        }
+
+        return [
+            'thinking' => ['type' => 'adaptive'],
+            'effort' => $effort,
+        ];
+    }
+
+    /**
+     * Throw when the provider declined the request, whether or not any text came back.
+     * Compared by case name so Prism versions without a `Refusal` case keep working.
+     */
+    protected function assertNotRefused(FinishReason $finishReason): void
+    {
+        if ($finishReason->name === 'Refusal') {
+            throw new PromptRefusedException(static::class);
+        }
     }
 
     /**

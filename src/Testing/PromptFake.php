@@ -90,7 +90,9 @@ class PromptFake
         $found = collect($this->recorded)
             ->contains(function (array $record) use ($text): bool {
                 foreach ($record['messages'] as $message) {
-                    if (str_contains($message->content, $text)) {
+                    // Message (contract) does not declare $content; the concrete messages do.
+                    $content = property_exists($message, 'content') ? $message->content : null;
+                    if (is_string($content) && str_contains($content, $text)) {
                         return true;
                     }
                 }

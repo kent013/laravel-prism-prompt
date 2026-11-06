@@ -2,7 +2,7 @@
     "name": "kent013/laravel-prism-prompt",
     "description": "Laravel Mailable-like API for LLM prompts with Prism",
     "type": "library",
-    "version": "0.20.2",
+    "version": "0.21.0",
     "license": "MIT",
     "authors": [
         {
@@ -11,7 +11,7 @@
     ],
     "require": {
         "php": "^8.2",
-        "echolabsdev/prism": "^0.10|^0.99|^0.100|^1.0",
+        "echolabsdev/prism": "^0.10|^0.99|^0.100|^0.101|^0.102|^1.0",
         "illuminate/support": "^10.0|^11.0|^12.0|^13.0",
         "illuminate/view": "^10.0|^11.0|^12.0|^13.0",
         "react/async": "^4.3",

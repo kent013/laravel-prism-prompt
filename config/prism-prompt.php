@@ -47,6 +47,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Default Thinking Effort
+    |--------------------------------------------------------------------------
+    |
+    | Thinking effort for models with adaptive thinking (e.g. Claude Haiku 5.5).
+    | When set (low / medium / high ...), requests send `thinking: adaptive` and
+    | the effort as Prism provider options. null sends neither, so requests stay
+    | the same as earlier versions. A prompt YAML `effort` or the class property
+    | overrides this value.
+    |
+    */
+    'default_effort' => null,
+
+    /*
+    |--------------------------------------------------------------------------
     | Default Embedding Provider
     |--------------------------------------------------------------------------
     |

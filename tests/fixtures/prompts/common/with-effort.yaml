@@ -1,0 +1,8 @@
+name: with_effort
+provider: anthropic
+model: claude-haiku-5-5
+max_tokens: 1024
+effort: medium
+
+prompt: |
+  Say hello to {{ $userName }}.
