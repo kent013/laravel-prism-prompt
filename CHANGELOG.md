@@ -23,8 +23,9 @@ Claude Haiku 5.5 などの適応的な思考 (adaptive thinking) を行うモデ
 ### Changed
 
 - `echolabsdev/prism` の制約に `^0.101|^0.102` を足した (既存の版は外していない)。
-- Prism v0.102 で `Meta::$id` が null を取らなくなったのに合わせ、`requestId` の `?? null` を外した。
+- `requestId` の `?? null` を外した (`Meta::$id` は null を取らない `string`。PHPStan の指摘)。
 - `PromptFake::assertPromptContains()` は、`Message` の契約に無い `$content` を、文字列の性質として持つメッセージだけから読む。
+- 費用の計算で思考のトークンを二重に数えない: Prism v0.102 以降は `Usage::$completionTokens` が思考の分を含み `thoughtTokens` はその内数なので、v0.102 以降では `LlmPricingService::calculate()` へ `thoughtTokens` を渡さない (`calculate()` の API と、思考を別に数える古い Prism での振る舞いは変えない)。
 
 ### Known limitations
 

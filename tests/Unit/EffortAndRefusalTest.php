@@ -217,3 +217,25 @@ it('throws PromptRefusedException on a structured refusal', function (): void {
     expect(fn () => (new EffortStructuredPrompt)->executeSync())
         ->toThrow(PromptRefusedException::class);
 });
+
+it('does not bill reasoning twice: Prism v0.102 counts thoughtTokens inside completionTokens', function (): void {
+    Event::fake([PromptExecutionCompleted::class]);
+    Prism::fake([
+        TextResponseFake::make()->withText('hello')->withUsage(new Usage(promptTokens: 1000, completionTokens: 1000, thoughtTokens: 600))->withFinishReason(FinishReason::Stop),
+    ]);
+
+    (new EffortTextPrompt)->executeSync();
+
+    $expected = app(\Kent013\PrismPrompt\Pricing\LlmPricingService::class)->calculate(
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-5-20250929',
+        inputTokens: 1000,
+        outputTokens: 1000,
+    );
+
+    Event::assertDispatched(PromptExecutionCompleted::class, function (PromptExecutionCompleted $e) use ($expected): bool {
+        return $e->cost !== null
+            && $e->cost->outputCostUsd === $expected->outputCostUsd
+            && $e->cost->totalCostUsd === $expected->totalCostUsd;
+    });
+});

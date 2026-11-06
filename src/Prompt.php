@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kent013\PrismPrompt;
 
+use Composer\InstalledVersions;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -743,6 +744,26 @@ abstract class Prompt implements PromptInterface
     }
 
     /**
+     * Whether the installed Prism counts reasoning tokens inside `Usage::$completionTokens`.
+     *
+     * Prism v0.102.0 documents `thoughtTokens` as "the part of completionTokens the model
+     * spent reasoning". When the version cannot be read, the current contract is assumed.
+     */
+    private static function completionIncludesThoughtTokens(): bool
+    {
+        $version = InstalledVersions::isInstalled('echolabsdev/prism')
+            ? InstalledVersions::getVersion('echolabsdev/prism')
+            : null;
+
+        if ($version === null || ! is_numeric($version[0] ?? '') && ! str_starts_with($version, 'v')) {
+            // Not installed through Composer, or a branch alias (dev-main): assume the current contract.
+            return true;
+        }
+
+        return version_compare(ltrim($version, 'v'), '0.102.0', '>=');
+    }
+
+    /**
      * Resolve USD cost for the call, returning null if the service is
      * unavailable or pricing resolution throws unexpectedly.
      */
@@ -763,7 +784,9 @@ abstract class Prompt implements PromptInterface
                 outputTokens: $usage->completionTokens,
                 cacheWriteInputTokens: $usage->cacheWriteInputTokens,
                 cacheReadInputTokens: $usage->cacheReadInputTokens,
-                thoughtTokens: $usage->thoughtTokens,
+                // Prism v0.102+ counts reasoning inside completionTokens (thoughtTokens is a subset),
+                // so passing it again would bill reasoning twice. Older Prism reported it separately.
+                thoughtTokens: self::completionIncludesThoughtTokens() ? null : $usage->thoughtTokens,
             );
         } catch (Throwable $e) {
             Log::error('Failed to compute LLM cost', [
