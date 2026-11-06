@@ -311,7 +311,7 @@ describe('UserInput — integration with Prompt::fake() and DefensiveInstruction
             file_put_contents($yamlPath, <<<'YAML'
 name: user_input_defense_test
 provider: anthropic
-model: claude-sonnet-4-5-20250929
+model: claude-sonnet-5-5
 max_tokens: 256
 
 system_prompt: |

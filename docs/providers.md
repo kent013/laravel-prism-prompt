@@ -34,10 +34,10 @@ Declare a priority-ordered list in YAML:
 
 ```yaml
 provider: anthropic                # system default (no user keys)
-model: claude-sonnet-4-5-20250929
+model: claude-sonnet-5-5
 
 models:
-  - { provider: anthropic, model: claude-sonnet-4-5-20250929, priority: 1 }
+  - { provider: anthropic, model: claude-sonnet-5-5, priority: 1 }
   - { provider: openai,   model: gpt-4o,                      priority: 2 }
   - { provider: google,   model: gemini-2.0-flash-exp,        priority: 3 }
 ```

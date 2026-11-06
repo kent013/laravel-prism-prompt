@@ -1,11 +1,11 @@
 name: multi-model-test
 provider: anthropic
-model: claude-sonnet-4-5-20250929
+model: claude-sonnet-5-5
 max_tokens: 1024
 
 models:
   - provider: anthropic
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5-5
     priority: 1
   - provider: openai
     model: gpt-4o

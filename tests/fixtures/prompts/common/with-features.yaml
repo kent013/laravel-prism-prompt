@@ -1,6 +1,6 @@
 name: with-features
 provider: anthropic
-model: claude-sonnet-4-5-20250929
+model: claude-sonnet-5-5
 max_tokens: 2048
 max_steps: 5
 

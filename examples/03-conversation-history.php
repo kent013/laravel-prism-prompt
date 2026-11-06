@@ -85,7 +85,7 @@ class ChatResponsePrompt extends Prompt
 //
 // name: chat_response
 // provider: anthropic
-// model: claude-sonnet-4-5-20250929
+// model: claude-sonnet-5-5
 // max_tokens: 500
 // temperature: 0.7
 //

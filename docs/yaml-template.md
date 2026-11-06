@@ -136,12 +136,12 @@ version: 1.0.0
 description: Generate personalized greeting message
 
 provider: anthropic
-model: claude-sonnet-4-5-20250929
+model: claude-sonnet-5-5
 max_tokens: 500
 temperature: 0.8
 
 models:
-  - { provider: anthropic, model: claude-sonnet-4-5-20250929, priority: 1 }
+  - { provider: anthropic, model: claude-sonnet-5-5, priority: 1 }
   - { provider: openai, model: gpt-4o, priority: 2 }
 
 system_prompt: |

@@ -30,7 +30,7 @@ use Kent013\PrismPrompt\Values\UserInput;
 //
 // name: evaluate_message
 // provider: anthropic
-// model: claude-sonnet-4-5-20250929
+// model: claude-sonnet-5-5
 //
 // system_prompt: |
 //   {{ \Kent013\PrismPrompt\Values\DefensiveInstructions::forUserInput() }}

@@ -228,7 +228,7 @@ it('resolves settings from yaml', function (): void {
     $prompt = new TestPrompt('Alice');
 
     expect($prompt->testResolveProvider())->toBe('anthropic');
-    expect($prompt->testResolveModel())->toBe('claude-sonnet-4-5-20250929');
+    expect($prompt->testResolveModel())->toBe('claude-sonnet-5-5');
     expect($prompt->testResolveMaxTokens())->toBe(1024);
 });
 
@@ -320,7 +320,7 @@ it('records provider and model info when faking', function (): void {
     $prompt->executeSync();
 
     $fake->assertProvider('anthropic');
-    $fake->assertModel('claude-sonnet-4-5-20250929');
+    $fake->assertModel('claude-sonnet-5-5');
 
     TestPrompt::stopFaking();
 });
@@ -364,7 +364,7 @@ it('loads prompt and resolves provider/model from yaml', function (): void {
     Prompt::load('greeting', ['userName' => 'Alice'])->executeSync();
 
     $fake->assertProvider('anthropic');
-    $fake->assertModel('claude-sonnet-4-5-20250929');
+    $fake->assertModel('claude-sonnet-5-5');
 
     Prompt::stopFaking();
 });
@@ -480,7 +480,7 @@ it('selects highest priority provider when multiple API keys are provided', func
 
     // Should select anthropic (priority 1)
     expect($selected['provider'])->toBe('anthropic');
-    expect($selected['model'])->toBe('claude-sonnet-4-5-20250929');
+    expect($selected['model'])->toBe('claude-sonnet-5-5');
     expect($selected['config'])->toBe(['api_key' => 'sk-ant-test']);
 });
 
@@ -494,7 +494,7 @@ it('falls back to default provider when no matching API keys', function (): void
 
     // Should fallback to YAML default (anthropic)
     expect($selected['provider'])->toBe('anthropic');
-    expect($selected['model'])->toBe('claude-sonnet-4-5-20250929');
+    expect($selected['model'])->toBe('claude-sonnet-5-5');
     expect($selected['config'])->toBe([]);
 });
 
@@ -505,7 +505,7 @@ it('uses default provider when withApiKeys is not called', function (): void {
 
     // Should use YAML default (anthropic)
     expect($selected['provider'])->toBe('anthropic');
-    expect($selected['model'])->toBe('claude-sonnet-4-5-20250929');
+    expect($selected['model'])->toBe('claude-sonnet-5-5');
     expect($selected['config'])->toBe([]);
 });
 

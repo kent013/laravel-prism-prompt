@@ -72,7 +72,7 @@ readonly class PromptTemplate
         $provider = $data['provider'] ?? config('prism-prompt.default_provider', 'anthropic');
         Assert::string($provider);
 
-        $model = $data['model'] ?? config('prism-prompt.default_model', 'claude-sonnet-4-5-20250929');
+        $model = $data['model'] ?? config('prism-prompt.default_model', 'claude-sonnet-5-5');
         Assert::string($model);
 
         $maxTokens = $data['max_tokens'] ?? config('prism-prompt.default_max_tokens', 4096);

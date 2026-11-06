@@ -19,7 +19,7 @@ use Kent013\PrismPrompt\Prompt;
 //
 // name: summarize
 // provider: anthropic
-// model: claude-sonnet-4-5-20250929
+// model: claude-sonnet-5-5
 // max_tokens: 500
 // temperature: 0.3
 //

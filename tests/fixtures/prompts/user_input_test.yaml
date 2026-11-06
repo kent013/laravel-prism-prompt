@@ -1,6 +1,6 @@
 name: user_input_test
 provider: anthropic
-model: claude-sonnet-4-5-20250929
+model: claude-sonnet-5-5
 max_tokens: 256
 
 system_prompt: |

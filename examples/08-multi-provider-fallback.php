@@ -23,13 +23,13 @@ use Kent013\PrismPrompt\Prompt;
 //
 // # System default — used when no caller-supplied keys are available.
 // provider: anthropic
-// model: claude-sonnet-4-5-20250929
+// model: claude-sonnet-5-5
 // max_tokens: 1024
 // temperature: 0.2
 //
 // # Multi-provider candidates. Lower priority value = higher priority.
 // models:
-//   - { provider: anthropic, model: claude-sonnet-4-5-20250929, priority: 1 }
+//   - { provider: anthropic, model: claude-sonnet-5-5, priority: 1 }
 //   - { provider: openai,    model: gpt-4o,                     priority: 2 }
 //   - { provider: google,    model: gemini-2.0-flash-exp,       priority: 3 }
 //

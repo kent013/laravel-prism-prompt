@@ -58,7 +58,7 @@ it('sends system prompt and user message separately', function (): void {
 
     // Provider / model assertions.
     $fake->assertProvider('anthropic');
-    $fake->assertModel('claude-sonnet-4-5-20250929');
+    $fake->assertModel('claude-sonnet-5-5');
 
     Prompt::stopFaking();
 });

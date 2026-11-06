@@ -24,7 +24,7 @@ stable text under a name you'll mark cacheable:
 # resources/prompts/heuristic/useful.yaml
 name: heuristic-useful
 provider: anthropic
-model: claude-sonnet-4-5-20250929
+model: claude-sonnet-5-5
 max_tokens: 8192
 
 system_prompt: |

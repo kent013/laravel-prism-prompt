@@ -23,7 +23,7 @@ return [
     | or YAML template.
     |
     */
-    'default_model' => env('PRISM_MODEL', 'claude-sonnet-4-5-20250929'),
+    'default_model' => env('PRISM_MODEL', 'claude-sonnet-5-5'),
 
     /*
     |--------------------------------------------------------------------------

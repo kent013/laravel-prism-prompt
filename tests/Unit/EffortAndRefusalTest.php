@@ -228,7 +228,7 @@ it('does not bill reasoning twice: Prism v0.102 counts thoughtTokens inside comp
 
     $expected = app(\Kent013\PrismPrompt\Pricing\LlmPricingService::class)->calculate(
         provider: 'anthropic',
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-5-5',
         inputTokens: 1000,
         outputTokens: 1000,
     );

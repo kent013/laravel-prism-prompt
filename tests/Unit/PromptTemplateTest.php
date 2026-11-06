@@ -11,7 +11,7 @@ it('loads template from yaml file', function (): void {
 
     expect($template->name)->toBe('greeting');
     expect($template->provider)->toBe('anthropic');
-    expect($template->model)->toBe('claude-sonnet-4-5-20250929');
+    expect($template->model)->toBe('claude-sonnet-5-5');
     expect($template->maxTokens)->toBe(1024);
     expect($template->temperature)->toBe(0.5);
     expect($template->template)->toContain('Say hello to');

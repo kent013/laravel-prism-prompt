@@ -10,7 +10,7 @@ events with USD cost attached — the same way you'd compose a Mailable.
 ```yaml
 # resources/prompts/greeting.yaml
 provider: anthropic
-model: claude-sonnet-4-5-20250929
+model: claude-sonnet-5-5
 
 system_prompt: |
   You are a friendly greeting assistant.
@@ -174,7 +174,7 @@ YAML lookup (in priority order):
 | Key | Default | Description |
 |-----|---------|-------------|
 | `default_provider` | `anthropic` | Default LLM provider for text generation |
-| `default_model` | `claude-sonnet-4-5-20250929` | Default model for text generation |
+| `default_model` | `claude-sonnet-5-5` | Default model for text generation |
 | `default_max_tokens` | `4096` | Maximum tokens in LLM response |
 | `default_temperature` | `0.7` | Response randomness (0.0 - 1.0) |
 | `default_embedding_provider` | `openai` | Default provider for embeddings |

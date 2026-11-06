@@ -126,7 +126,7 @@ it('sends x-api-key, anthropic-version headers and model in body', function (): 
         expect($request->header('x-api-key'))->toBe(['test-api-key']);
         expect($request->header('anthropic-version'))->toBe(['2023-06-01']);
         $body = json_decode($request->body(), true, 512, JSON_THROW_ON_ERROR);
-        expect($body['model'])->toBe('claude-sonnet-4-5-20250929');
+        expect($body['model'])->toBe('claude-sonnet-5-5');
         expect($body['max_tokens'])->toBe(1024);
 
         return true;
@@ -274,7 +274,7 @@ it('captures pool call meta (usage / model / request-id / raw body) on the promp
     Http::fake([
         'api.anthropic.com/v1/messages' => Http::response([
             'id' => 'msg_pool_001',
-            'model' => 'claude-sonnet-4-5-20250929',
+            'model' => 'claude-sonnet-5-5',
             'content' => [['type' => 'text', 'text' => 'ok']],
             'usage' => [
                 'input_tokens' => 1200,
@@ -296,7 +296,7 @@ it('captures pool call meta (usage / model / request-id / raw body) on the promp
         'cache_creation_input_tokens' => 50,
         'cache_read_input_tokens' => 800,
     ]);
-    expect($meta->model)->toBe('claude-sonnet-4-5-20250929');
+    expect($meta->model)->toBe('claude-sonnet-5-5');
     expect($meta->requestId)->toBe('req_header_xyz');
     expect($meta->rawBody)->toContain('msg_pool_001');
 });
@@ -305,7 +305,7 @@ it('falls back to the message id for request-id when the header is absent', func
     Http::fake([
         'api.anthropic.com/v1/messages' => Http::response([
             'id' => 'msg_fallback_id',
-            'model' => 'claude-sonnet-4-5-20250929',
+            'model' => 'claude-sonnet-5-5',
             'content' => [['type' => 'text', 'text' => 'ok']],
             'usage' => ['input_tokens' => 1, 'output_tokens' => 1],
         ], 200),
@@ -323,7 +323,7 @@ it('records null usage on the prompt meta when the response carries no usage blo
     Http::fake([
         'api.anthropic.com/v1/messages' => Http::response([
             'id' => 'msg_no_usage',
-            'model' => 'claude-sonnet-4-5-20250929',
+            'model' => 'claude-sonnet-5-5',
             'content' => [['type' => 'text', 'text' => 'ok']],
         ], 200),
     ]);

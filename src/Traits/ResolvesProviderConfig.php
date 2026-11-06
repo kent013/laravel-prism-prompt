@@ -105,7 +105,7 @@ trait ResolvesProviderConfig
      */
     protected function getDefaultModelFallback(): string
     {
-        return 'claude-sonnet-4-5-20250929';
+        return 'claude-sonnet-5-5';
     }
 
     /**

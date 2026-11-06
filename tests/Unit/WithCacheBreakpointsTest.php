@@ -84,7 +84,7 @@ it('returns rendered system prompt as a definite string', function (): void {
 it('exposes resolved model and max_tokens via public accessors', function (): void {
     $prompt = new SectionsPrompt;
 
-    expect($prompt->getModel())->toBe('claude-sonnet-4-5-20250929');
+    expect($prompt->getModel())->toBe('claude-sonnet-5-5');
     expect($prompt->getMaxTokens())->toBe(1024);
 });
 

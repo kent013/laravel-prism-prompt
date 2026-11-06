@@ -23,6 +23,7 @@ Claude Haiku 5.5 などの適応的な思考 (adaptive thinking) を行うモデ
 ### Changed
 
 - `echolabsdev/prism` の制約に `^0.101|^0.102` を足した (既存の版は外していない)。
+- 既定のモデル (`prism-prompt.default_model` の既定・`PromptTemplate`・`ResolvesProviderConfig` の最後の既定) を `claude-sonnet-4-5-20250929` から `claude-sonnet-5-5` にした。提供元が Sonnet 4.5 を 2026-09-30 に deprecated にし、2026-11-30 に引退させるため (後継の指定は提供元のとおり)。料金表の行・README・docs・examples・テストの fixture も同じ綴りへ移した。
 - `requestId` の `?? null` を外した (`Meta::$id` は null を取らない `string`。PHPStan の指摘)。
 - `PromptFake::assertPromptContains()` は、`Message` の契約に無い `$content` を、文字列の性質として持つメッセージだけから読む。
 - 費用の計算で思考のトークンを二重に数えない: Prism v0.102 以降は `Usage::$completionTokens` が思考の分を含み `thoughtTokens` はその内数なので、v0.102 以降では `LlmPricingService::calculate()` へ `thoughtTokens` を渡さない (`calculate()` の API と、思考を別に数える古い Prism での振る舞いは変えない)。
