@@ -36,6 +36,8 @@ YAML);
 
     expect($template->name)->toBe('minimal');
     expect($template->provider)->toBe('anthropic');
+    // v0.21.0: 既定のモデルは引退する Sonnet 4.5 の後継 (PRISM_MODEL が無いとき)
+    expect($template->model)->toBe('claude-sonnet-5-5');
     expect($template->maxTokens)->toBe(4096);
 
     @unlink($tempFile);
@@ -89,4 +91,24 @@ YAML);
 
     @unlink($tempFile);
     @rmdir($tempDir);
+});
+
+it('falls back to claude-sonnet-5-5 when the default_model config is unset (v0.21.0)', function (): void {
+    $tempDir = sys_get_temp_dir().'/prism-prompt-test';
+    @mkdir($tempDir, 0777, true);
+    $tempFile = $tempDir.'/minimal-no-config.yaml';
+    file_put_contents($tempFile, <<<'YAML'
+name: minimal_no_config
+prompt: "Hello"
+YAML);
+
+    $original = config('prism-prompt');
+    config()->set('prism-prompt', array_diff_key((array) $original, ['default_model' => true]));
+
+    try {
+        expect(PromptTemplate::fromYaml($tempFile)->model)->toBe('claude-sonnet-5-5');
+    } finally {
+        config()->set('prism-prompt', $original);
+        @unlink($tempFile);
+    }
 });
